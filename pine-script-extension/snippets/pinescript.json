@@ -1,0 +1,61 @@
+{
+    "Indicator Template": {
+        "prefix": "indicator",
+        "body": [
+            "//@version=6",
+            "indicator(\"${1:Indicator Name}\", overlay=${2:true})",
+            "",
+            "${0:plot(close)}"
+        ],
+        "description": "Basic indicator template for Pine Script v6"
+    },
+    "Strategy Template": {
+        "prefix": "strategy",
+        "body": [
+            "//@version=6",
+            "strategy(\"${1:Strategy Name}\", overlay=${2:true})",
+            "",
+            "longCondition = ${3:ta.crossover(ta.sma(close, 14), ta.sma(close, 28))}",
+            "if (longCondition)",
+            "    strategy.entry(\"Long\", strategy.long)",
+            "",
+            "shortCondition = ${4:ta.crossunder(ta.sma(close, 14), ta.sma(close, 28))}",
+            "if (shortCondition)",
+            "    strategy.entry(\"Short\", strategy.short)",
+            "",
+            "${0}"
+        ],
+        "description": "Basic strategy template for Pine Script v6"
+    },
+    "Input Int": {
+        "prefix": "input_int",
+        "body": "const int ${1:name} = input.int(${2:default_value}, \"${3:title}\")",
+        "description": "Integer input"
+    },
+    "Input Float": {
+        "prefix": "input_float",
+        "body": "const float ${1:name} = input.float(${2:default_value}, \"${3:title}\")",
+        "description": "Float input"
+    },
+    "Input Bool": {
+        "prefix": "input_bool",
+        "body": "const bool ${1:name} = input.bool(${2:default_value}, \"${3:title}\")",
+        "description": "Boolean input"
+    },
+    "If Statement": {
+        "prefix": "if",
+        "body": [
+            "if ${1:condition}",
+            "    ${0:body}"
+        ],
+        "description": "If statement"
+    },
+    "For Loop": {
+        "prefix": "for",
+        "body": [
+            "for ${1:i} = ${2:0} to ${3:length}",
+            "    ${0:body}"
+        ],
+        "description": "For loop"
+    }
+}

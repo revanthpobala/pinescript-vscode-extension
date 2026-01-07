@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+**/out/
+**/dist/
+**/*.vsix
+**/*.wasm
+
+# User-requested exclusions
+docs/
+src/
+reproduce_crash.js
+
+# System files
+.DS_Store
+.vscode/
+
+# Environment
+.env

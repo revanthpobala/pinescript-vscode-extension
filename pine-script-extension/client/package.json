@@ -1,0 +1,22 @@
+{
+  "name": "pine-script-extension-client",
+  "description": "Pine Script v6 Language Client",
+  "version": "1.0.0",
+  "publisher": "vscode-samples",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "main": "./out/extension",
+  "scripts": {
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

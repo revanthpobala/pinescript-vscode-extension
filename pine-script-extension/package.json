@@ -1,0 +1,78 @@
+{
+  "name": "pine-script-pro",
+  "displayName": "Pine Script Pro",
+  "description": "Professional Language Support for Pine Script. Static analysis, type-infection checking, and intelligent tooltips for advanced TradingView developers.",
+  "version": "1.0.0",
+  "publisher": "revanth",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/revanthpobala/pine-script-static-checker"
+  },
+  "homepage": "https://github.com/revanthpobala/pine-script-static-checker",
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#089981",
+    "theme": "dark"
+  },
+  "keywords": [
+    "pinescript",
+    "tradingview",
+    "pine script",
+    "trading",
+    "finance",
+    "analyzer",
+    "checker"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Education"
+  ],
+  "main": "./client/out/extension.js",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "pinescript",
+        "aliases": [
+          "Pine Script",
+          "pine"
+        ],
+        "extensions": [
+          ".pine"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pinescript",
+        "scopeName": "source.pinescript",
+        "path": "./syntaxes/pinescript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "pinescript",
+        "path": "./snippets/pinescript.json"
+      }
+    ]
+  },
+  "scripts": {
+    "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+    "compile": "cd client && npm run compile && cd ../server && npm run compile",
+    "bundle": "node esbuild.js --production",
+    "watch": "tsc -b -w",
+    "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
+    "vscode:prepublish": "npm run bundle"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "esbuild": "^0.27.2",
+    "fs-extra": "^11.1.1",
+    "typescript": "^5.0.0"
+  }
+}

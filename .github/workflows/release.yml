@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The user requested to "Run npm ci in the root".
+      # However, there is no package.json in the repository root.
+      # The "root" logic for the parser resides in `tree-sitter-pinescript`.
+      # We install dependencies there to ensure `nan` and `tree-sitter-cli` are available.
+      - name: Install tree-sitter-pinescript dependencies
+        run: npm ci
+        working-directory: tree-sitter-pinescript
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: pine-script-extension/client
+
+      - name: Install server dependencies
+        # Use --install-links to copy the local tree-sitter-pinescript dependency
+        # instead of symlinking it, ensuring vsce can package it correctly.
+        run: npm install --install-links
+        working-directory: pine-script-extension/server
+
+      - name: Rebuild tree-sitter parser
+        # Rebuild the parser to ensure binding.gyp is executed and the binary is linked correctly.
+        run: npm rebuild tree-sitter-pinescript
+        working-directory: pine-script-extension/server
+
+      - name: Compile Client
+        run: npm run compile
+        working-directory: pine-script-extension/client
+
+      - name: Compile Server
+        run: npm run compile
+        working-directory: pine-script-extension/server
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package Extension
+        run: vsce package
+        working-directory: pine-script-extension
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: pine-script-extension/*.vsix
