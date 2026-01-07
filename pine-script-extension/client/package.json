@@ -2,7 +2,10 @@
   "name": "pine-script-extension-client",
   "description": "Pine Script v6 Language Client",
   "version": "1.0.0",
-  "publisher": "vscode-samples",
+  "publisher": "revanthpobala",
+  "author": {
+    "name": "Revanth Pobala"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },

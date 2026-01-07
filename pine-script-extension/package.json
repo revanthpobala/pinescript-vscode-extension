@@ -3,12 +3,15 @@
   "displayName": "Pine Script Pro",
   "description": "Professional Language Support for Pine Script. Static analysis, type-infection checking, and intelligent tooltips for advanced TradingView developers.",
   "version": "1.0.0",
-  "publisher": "revanth",
+  "publisher": "revanthpobala",
+  "author": {
+    "name": "Revanth Pobala"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/revanthpobala/pine-script-static-checker"
+    "url": "https://github.com/revanthpobala/pinescript-vscode-extension"
   },
-  "homepage": "https://github.com/revanthpobala/pine-script-static-checker",
+  "homepage": "https://github.com/revanthpobala/pinescript-vscode-extension",
   "icon": "resources/icon.png",
   "galleryBanner": {
     "color": "#089981",

@@ -34,7 +34,8 @@ Never get bogged down by thousands of false positives again.
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
 | **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](resources/screenshot-hover-atr.png) |
-| **Smart Diagnostics** | Catch logic errors like void-assignments. | ![Diagnostics](resources/screenshot-hover-ema.png) |
+| **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](resources/screenshot-linter-diagnostics.png) |
+| **Advanced Verification** | Catch void assignments and parameter leaks. | ![Verification](resources/screenshot-hover-ema.png) |
 
 ---
 
