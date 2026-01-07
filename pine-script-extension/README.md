@@ -39,7 +39,28 @@ Never get bogged down by thousands of false positives again.
 
 ---
 
-## 🛠 Installation
+## � Open Source & Contribution
+
+This extension is part of a larger project dedicated to modernizing Pine Script development.
+- **Source Code**: [GitHub Repository](https://github.com/revanthpobala/pinescript-vscode-extension)
+- **Grammar Source**: [Tree-sitter Pinescript](https://github.com/revanthpobala/pinescript-vscode-extension/tree/main/tree-sitter-pinescript)
+- **Author**: [Revanth Pobala](https://github.com/revanthpobala)
+
+If you find a bug or have a suggestion, please open an Issue on GitHub!
+
+---
+
+## ⚠️ Disclaimer & Risk Warning
+
+**NOT FINANCIAL ADVICE**. **Pine Script Pro** is a static analysis tool designed for development and educational purposes only. It is intended to assist in the identification of syntax and logical errors. 
+
+- **No Liability**: The author (**Revanth Pobala**) is not responsible for any financial or monetary losses resulting from the use of this software, its suggestions, or any indicators developed using this tool. 
+- **Verification Required**: Trading logic should always be manually verified and backtested on TradingView before deployment. 
+- **"As Is"**: This software is provided "as is" without warranty of any kind. Use at your own risk.
+
+---
+
+## �🛠 Installation
 
 1. Download the latest `pine-script-pro-1.0.0.vsix` file.
 2. Open VS Code and press `Cmd+Shift+P` (or `Ctrl+Shift+P`).
@@ -51,5 +72,4 @@ Never get bogged down by thousands of false positives again.
 - **Language**: Pine Script v6 (optimized), compatible with v3, v4, and v5.
 
 ---
----
-**License**: Modified MIT. **Mandatory attribution to Revanth Pobala is required** for any code usage. See root [LICENSE.txt](../LICENSE.txt) for details.
+**License**: Modified MIT. **Mandatory attribution to Revanth Pobala is required** for any usage of the code (including single lines). See root [LICENSE.txt](../LICENSE.txt) for the full legal text and disclaimer.
