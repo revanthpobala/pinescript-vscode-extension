@@ -3,9 +3,7 @@
   "description": "Pine Script v6 Language Client",
   "version": "1.0.0",
   "publisher": "revanthpobala",
-  "author": {
-    "name": "Revanth Pobala"
-  },
+  "author": "Revanth Pobala",
   "engines": {
     "vscode": "^1.75.0"
   },

@@ -2,9 +2,7 @@
   "name": "pine-script-extension-server",
   "description": "Pine Script v6 Language Server",
   "version": "1.0.0",
-  "author": {
-    "name": "Revanth Pobala"
-  },
+  "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {
     "compile": "tsc -b",

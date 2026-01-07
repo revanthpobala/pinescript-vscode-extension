@@ -4,9 +4,7 @@
   "description": "Professional Language Support for Pine Script. Static analysis, type-infection checking, and intelligent tooltips for advanced TradingView developers.",
   "version": "1.0.0",
   "publisher": "revanthpobala",
-  "author": {
-    "name": "Revanth Pobala"
-  },
+  "author": "Revanth Pobala",
   "repository": {
     "type": "git",
     "url": "https://github.com/revanthpobala/pinescript-vscode-extension"
