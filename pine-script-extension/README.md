@@ -51,4 +51,5 @@ Never get bogged down by thousands of false positives again.
 - **Language**: Pine Script v6 (optimized), compatible with v3, v4, and v5.
 
 ---
-*Developed for the Pine Script community. Optimized for speed, accuracy, and professional trading logic.*
+---
+**License**: Modified MIT. **Mandatory attribution to Revanth Pobala is required** for any code usage. See root [LICENSE.txt](../LICENSE.txt) for details.
