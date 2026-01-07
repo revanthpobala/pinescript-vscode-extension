@@ -5,10 +5,17 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
 ## 📁 Repository Structure
 
 - [**pine-script-extension/**](pine-script-extension/): The primary VS Code extension source.
-  - **client/**: VS Code side integration (Language Client).
-  - **server/**: The "Pine Script Pro" analyzer (Language Server).
-  - **server/scripts/**: Maintenance scripts for metadata.
+  - See the [**Extension Guide**](pine-script-extension/README.md) for full features and visuals.
 - [**tree-sitter-pinescript/**](tree-sitter-pinescript/): Custom grammar for Pine Script v6 (Patched for WASM stability).
+
+---
+
+## ✨ Features at a Glance
+
+| Feature | Description | Preview |
+| :--- | :--- | :--- |
+| **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
+| **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
 
 ---
 
@@ -76,5 +83,9 @@ cp tree-sitter-pinescript.wasm ../pine-script-extension/server/wasm/
 
 ---
 
+## ⚠️ Disclaimer
+
+**NOT FINANCIAL ADVICE**. This software is for development purposes only. The author (**Revanth Pobala**) is not responsible for any financial losses. Use at your own risk.
+
 ## ⚖️ License
-This project is licensed under the MIT License. Developed for the Pine Script community.
+This project is licensed under a modified MIT License. **Mandatory attribution to Revanth Pobala is required** for any usage of the code (including single lines or snippets). See [LICENSE.txt](LICENSE.txt) for full details.

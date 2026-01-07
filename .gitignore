@@ -14,6 +14,13 @@ reproduce_crash.js
 
 # System files
 .DS_Store
+
+# Tree-sitter bindings (redundant for VS Code extension)
+tree-sitter-pinescript/bindings/c/
+tree-sitter-pinescript/bindings/go/
+tree-sitter-pinescript/bindings/python/
+tree-sitter-pinescript/bindings/rust/
+tree-sitter-pinescript/bindings/swift/
 .vscode/
 
 # Environment
