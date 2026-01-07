@@ -3,6 +3,7 @@
   "displayName": "Pine Script Pro",
   "description": "Professional Language Support for Pine Script. Static analysis, type-infection checking, and intelligent tooltips for advanced TradingView developers.",
   "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
   "publisher": "revanthpobala",
   "author": "Revanth Pobala",
   "repository": {
