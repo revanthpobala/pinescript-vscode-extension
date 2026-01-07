@@ -8,8 +8,8 @@ node_modules/
 **/*.wasm
 
 # User-requested exclusions
-docs/
-src/
+/docs/
+/src/
 reproduce_crash.js
 
 # System files

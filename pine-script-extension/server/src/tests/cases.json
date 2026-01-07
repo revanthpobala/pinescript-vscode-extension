@@ -1,0 +1,141 @@
+[
+    {
+        "name": "Valid EMA call",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20)\nplot(x)",
+        "expectedErrors": 0
+    },
+    {
+        "name": "EMA with void argument",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, alert('hi'))",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "Plot with void argument",
+        "code": "//@version=6\nindicator('Test')\nplot(alert('hi'))",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "Void assignment",
+        "code": "//@version=6\nindicator('Test')\nem = alert('hi')",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Cannot assign result of 'alert()' to a variable - this function returns void."
+        ]
+    },
+    {
+        "name": "Nested void calls",
+        "code": "//@version=6\nindicator('Test')\nplot(ta.ema(close, alert('hi')))",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "EMA missing argument",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close)\nplot(x)",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Missing required arguments for 'ta.ema()'. Expected 2, found 1."
+        ]
+    },
+    {
+        "name": "EMA too many arguments",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20, 30)\nplot(x)",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Too many arguments for 'ta.ema()'. Expected at most 2, found 3."
+        ]
+    },
+    {
+        "name": "EMA with multiple issues",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(alert('abc'))",
+        "expectedErrors": 2,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression.",
+            "Missing required arguments for 'ta.ema()'. Expected 2, found 1."
+        ]
+    },
+    {
+        "name": "Dual-use term: month as variable",
+        "code": "//@version=6\nindicator('Test')\nplot(month)",
+        "expectedErrors": 0
+    },
+    {
+        "name": "Dual-use term: month as function",
+        "code": "//@version=6\nindicator('Test')\nplot(month())",
+        "expectedErrors": 0
+    },
+    {
+        "name": "Namespace misuse as function",
+        "code": "//@version=6\nindicator('Test')\nx = ta(close)\nplot(x)",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Cannot use namespace 'ta' as a function."
+        ]
+    },
+    {
+        "name": "Void in math expression",
+        "code": "//@version=6\nindicator('Test')\nx = 1 + alert('hi')",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "Named arguments valid",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=close, length=20)\nplot(x)",
+        "expectedErrors": 0
+    },
+    {
+        "name": "Named arguments with void",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=alert('hi'), length=20)\nplot(x)",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "User-defined arrow function",
+        "code": "//@version=6\nindicator('Test')\nf(x) => x * 2\nplot(f(close))",
+        "expectedErrors": 0
+    },
+    {
+        "name": "User Scenario from Screenshot",
+        "code": "//@version=6\nindicator('Test', overlay=true, max_labels_count=500, max_lines_count=500)\ninp = input(14, 'ATR Length')\nalert('hi')\nplot(array(alert('hi')))",
+        "expectedErrors": 2,
+        "errorMessages": [
+            "Cannot use namespace 'array' as a function.",
+            "Function 'alert()' returns void and cannot be used as an expression."
+        ]
+    },
+    {
+        "name": "Resilient Symbol Collection",
+        "code": "//@version=6\nif true\n    myFunc() => 1\n    x = myFunc()\n    if x > 0\n        plot(x)\n",
+        "expectedErrors": 0,
+        "description": "Verify keywords aren't flagged as functions and symbols are collected even with broken indentation."
+    },
+    {
+        "name": "Lambda Call",
+        "code": "//@version=6\nf = (x) => x * 2\nplot(f(10))",
+        "expectedErrors": 0,
+        "description": "Verify calling a variable (lambda) doesn't cause 'Undefined function' error."
+    },
+    {
+        "name": "Deep Error Resiliency",
+        "code": "//@version=6\nif true\n    if true\n    myDeepFunc() => 1\n    x = myDeepFunc()",
+        "expectedErrors": 0,
+        "description": "Verify symbols are collected even from deeply nested parse errors."
+    },
+    {
+        "name": "table.cell full signature",
+        "code": "//@version=6\nindicator('Test')\ntbl = table.new(position.top_right, 1, 1)\ntable.cell(tbl, 0, 0, 'txt', 1, 1, color.red, text_halign=text.align_left, text_valign=text.align_center, text_size=size.small, bgcolor=color.blue, tooltip='hi', text_font_family=font.family_default)",
+        "expectedErrors": 0,
+        "description": "Verify that table.cell accepts all 13 parameters without throwing 'Too many arguments'."
+    }
+]

@@ -1,0 +1,3778 @@
+{
+  "functions": [
+    {
+      "name": "alert",
+      "description": "Creates an alert trigger for an indicator or strategy, with a specified frequency, when called on the latest realtime bar. To activate alerts for a script containing calls to this function, open the \"Create Alert\" dialog box, then select the script name and \"Any alert() function call\" in the \"Condition\" section.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "message",
+          "type": "series string",
+          "required": true
+        },
+        {
+          "name": "freq",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "alertcondition",
+      "description": "Creates alert condition, that is available in Create Alert dialog. Please note, that alertcondition does NOT create an alert, it just gives you more options in Create Alert dialog. Also, alertcondition effect is invisible on chart.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.abs",
+      "description": "Returns an array containing the absolute value of each element in the original array.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.avg",
+      "description": "The function returns the mean of an array's elements.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.binary_search",
+      "description": "The function returns the index of the value, or -1 if the value is not found. The array to search must be sorted in ascending order.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.binary_search_leftmost",
+      "description": "The function returns the index of the value if it is found. When the value is not found, the function returns the index of the next smallest element to the left of where the value would lie if it was in the array. The array to search must be sorted in ascending order.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.binary_search_rightmost",
+      "description": "The function returns the index of the value if it is found. When the value is not found, the function returns the index of the element to the right of where the value would lie if it was in the array. The array must be sorted in ascending order.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.clear",
+      "description": "The function removes all elements from an array.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.concat",
+      "description": "The function is used to merge two arrays. It pushes all elements from the second array to the first array, and returns the first array.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.copy",
+      "description": "The function creates a copy of an existing array.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.covariance",
+      "description": "The function returns the covariance of two arrays.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.every",
+      "description": "Returns true if all elements of the id array are true, false otherwise.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.fill",
+      "description": "The function sets elements of an array to a single value. If no index is specified, all elements are set. If only a start index (default 0) is supplied, the elements starting at that index are set. If both index parameters are used, the elements from the starting index up to but not including the end index (default na) are set.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.first",
+      "description": "Returns the array's first element. Throws a runtime error if the array is empty.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.from",
+      "description": "The function takes a variable number of arguments with one of the types: int, float, bool, string, label, line, color, box, table, linefill, and returns an array of the corresponding type.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.get",
+      "description": "The function returns the value of the element at the specified index.",
+      "returnType": "any",
+      "params": [
+        {
+          "name": "id",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "index",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "array.includes",
+      "description": "The function returns true if the value was found in an array, false otherwise.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.indexof",
+      "description": "The function returns the index of the first occurrence of the value, or -1 if the value is not found.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.insert",
+      "description": "The function changes the contents of an array by adding new elements in place.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.join",
+      "description": "The function creates and returns a new string by concatenating all the elements of an array, separated by the specified separator string.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.last",
+      "description": "Returns the array's last element. Throws a runtime error if the array is empty.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.lastindexof",
+      "description": "The function returns the index of the last occurrence of the value, or -1 if the value is not found.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.max",
+      "description": "The function returns the greatest value, or the nth greatest value in a given array.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.median",
+      "description": "The function returns the median of an array's elements.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.min",
+      "description": "The function returns the smallest value, or the nth smallest value in a given array.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.mode",
+      "description": "The function returns the mode of an array's elements. If there are several values with the same frequency, it returns the smallest value.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.new_bool",
+      "description": "The function creates a new array object of bool type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_box",
+      "description": "The function creates a new array object of box type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_color",
+      "description": "The function creates a new array object of color type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_float",
+      "description": "The function creates a new array object of float type elements.",
+      "returnType": "array",
+      "params": [
+        {
+          "name": "size",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "initial_value",
+          "type": "float",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "array.new_int",
+      "description": "The function creates a new array object of int type elements.",
+      "returnType": "array",
+      "params": [
+        {
+          "name": "size",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "initial_value",
+          "type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "array.new_label",
+      "description": "The function creates a new array object of label type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_line",
+      "description": "The function creates a new array object of line type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_linefill",
+      "description": "The function creates a new array object of linefill type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_string",
+      "description": "The function creates a new array object of string type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new_table",
+      "description": "The function creates a new array object of table type elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.new<type>",
+      "description": "The function creates a new array object of <type> elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.percentile_linear_interpolation",
+      "description": "Returns the value for which the specified percentage of array values (percentile) are less than or equal to it, using linear interpolation.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.percentile_nearest_rank",
+      "description": "Returns the value for which the specified percentage of array values (percentile) are less than or equal to it, using the nearest-rank method.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.percentrank",
+      "description": "Returns the percentile rank of the element at the specified index.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.pop",
+      "description": "The function removes the last element from an array and returns its value.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.push",
+      "description": "The function appends a value to an array.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "id",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "array.range",
+      "description": "The function returns the difference between the min and max values from a given array.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.remove",
+      "description": "The function changes the contents of an array by removing the element with the specified index.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.reverse",
+      "description": "The function reverses an array. The first array element becomes the last, and the last array element becomes the first.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.set",
+      "description": "The function sets the value of the element at the specified index.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "id",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "index",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": "any",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "array.shift",
+      "description": "The function removes an array's first element and returns its value.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.size",
+      "description": "The function returns the number of elements in an array.",
+      "returnType": "int",
+      "params": [
+        {
+          "name": "id",
+          "type": "array",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "array.slice",
+      "description": "The function creates a slice from an existing array. If an object from the slice changes, the changes are applied to both the new and the original arrays.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.some",
+      "description": "Returns true if at least one element of the id array is true, false otherwise.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.sort",
+      "description": "The function sorts the elements of an array.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.sort_indices",
+      "description": "Returns an array of indices which, when used to index the original array, will access its elements in their sorted order. It does not modify the original array.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.standardize",
+      "description": "The function returns the array of standardized elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "array.stdev",
+      "description": "The function returns the standard deviation of an array's elements.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.sum",
+      "description": "The function returns the sum of an array's elements.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "array.unshift",
+      "description": "The function inserts the value at the beginning of the array.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "array.variance",
+      "description": "The function returns the variance of an array's elements.",
+      "returnType": "array",
+      "params": []
+    },
+    {
+      "name": "barcolor",
+      "description": "Set color of bars.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "bgcolor",
+      "description": "Fill background of bars with specified color.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "bool",
+      "description": "Converts the x value to a bool value. Returns false if x is na, false, or an int/float value equal to 0. Returns true for all other possible values.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "box",
+      "description": "Casts na to box.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "box.copy",
+      "description": "Clones the box object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "box.delete",
+      "description": "Deletes the specified box object. If it has already been deleted, does nothing.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.get_bottom",
+      "description": "Returns the price value of the bottom border of the box.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "box.get_left",
+      "description": "Returns the bar index or the UNIX time (depending on the last value used for 'xloc') of the left border of the box.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "box.get_right",
+      "description": "Returns the bar index or the UNIX time (depending on the last value used for 'xloc') of the right border of the box.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "box.get_top",
+      "description": "Returns the price value of the top border of the box.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "box.new",
+      "description": "Creates a new box object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "box.set_bgcolor",
+      "description": "Sets the background color of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_border_color",
+      "description": "Sets the border color of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_border_style",
+      "description": "Sets the border style of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_border_width",
+      "description": "Sets the border width of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_bottom",
+      "description": "Sets the bottom coordinate of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_bottom_right_point",
+      "description": "Sets the bottom-right corner location of the id box to point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_extend",
+      "description": "Sets extending type of the border of this box object. When extend.none is used, the horizontal borders start at the left border and end at the right border. With extend.left or extend.right, the horizontal borders are extended indefinitely to the left or right of the box, respectively. With extend.both, the horizontal borders are extended on both sides.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_left",
+      "description": "Sets the left coordinate of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_lefttop",
+      "description": "Sets the left and top coordinates of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_right",
+      "description": "Sets the right coordinate of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_rightbottom",
+      "description": "Sets the right and bottom coordinates of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text",
+      "description": "The function sets the text in the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_color",
+      "description": "The function sets the color of the text inside the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_font_family",
+      "description": "The function sets the font family of the text inside the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_formatting",
+      "description": "Sets the formatting attributes the drawing applies to displayed text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_halign",
+      "description": "The function sets the horizontal alignment of the box's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_size",
+      "description": "The function sets the size of the box's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_valign",
+      "description": "The function sets the vertical alignment of a box's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_text_wrap",
+      "description": "The function sets the mode of wrapping of the text inside the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_top",
+      "description": "Sets the top coordinate of the box.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_top_left_point",
+      "description": "Sets the top-left corner location of the id box to point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "box.set_xloc",
+      "description": "Sets the left and right borders of a box and updates its xloc property.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "chart.point.copy",
+      "description": "Creates a copy of a chart.point object with the specified id.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "chart.point.from_index",
+      "description": "Returns a chart.point object with index as its x-coordinate and price as its y-coordinate.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "chart.point.from_time",
+      "description": "Returns a chart.point object with time as its x-coordinate and price as its y-coordinate.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "chart.point.new",
+      "description": "Creates a new chart.point object with the specified time, index, and price.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "chart.point.now",
+      "description": "Returns a chart.point object with price as the y-coordinate",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "color",
+      "description": "Casts na to color",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "color.b",
+      "description": "Retrieves the value of the color's blue component.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "color.from_gradient",
+      "description": "Based on the relative position of value in the bottom_value to top_value range, the function returns a color from the gradient defined by bottom_color to top_color.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "color.g",
+      "description": "Retrieves the value of the color's green component.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "color.new",
+      "description": "Function color applies the specified transparency to the given color.",
+      "returnType": "Color with specified transparency.",
+      "params": []
+    },
+    {
+      "name": "color.r",
+      "description": "Retrieves the value of the color's red component.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "color.rgb",
+      "description": "Creates a new color with transparency using the RGB color model.",
+      "returnType": "Color with specified transparency.",
+      "params": []
+    },
+    {
+      "name": "color.t",
+      "description": "Retrieves the color's transparency.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "dayofmonth",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "dayofweek",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "fill",
+      "description": "Fills background between two plots or hlines with a given color.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "fixnan",
+      "description": "For a given series replaces NaN values with previous nearest non-NaN value.",
+      "returnType": "Series without na gaps.",
+      "params": []
+    },
+    {
+      "name": "float",
+      "description": "Casts na to float",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "hline",
+      "description": "Renders a horizontal line at a given fixed price level.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "hour",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "indicator",
+      "description": "This declaration statement designates the script as an indicator and sets a number of indicator-related properties.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "shorttitle",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "overlay",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "precision",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "scale",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "max_bars_back",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_lines_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_labels_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_boxes_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_polylines_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "explicit_plot_zorder",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "timeframe",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "timeframe_gaps",
+          "type": "bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "input",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function automatically detects the type of the argument used for 'defval' and uses the corresponding input widget.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.bool",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a checkmark to the script's inputs.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.color",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a color picker that allows the user to select a color and transparency, either from a palette or a hex value.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.enum",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a dropdown with options based on the enum fields passed to its defval and options parameters.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "input.float",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a field for a float input to the script's inputs.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.int",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a field for an integer input to the script's inputs.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.price",
+      "description": "Adds a price input to the script's \"Settings/Inputs\" tab. Using confirm = true activates the interactive input mode where a price is selected by clicking on the chart.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.session",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds two dropdowns that allow the user to specify the beginning and the end of a session using the session selector and returns the result as a string.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.source",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a dropdown that allows the user to select a source for the calculation, e.g. close, hl2, etc. The user can also select an output from another indicator on their chart as the source.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.string",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a field for a string input to the script's inputs.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.symbol",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a field that allows the user to select a specific symbol using the symbol search and returns that symbol, paired with its exchange prefix, as a string.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.text_area",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a field for a multiline text input.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.time",
+      "description": "Adds a time input to the script's \"Settings/Inputs\" tab. This function adds two input widgets on the same line: one for the date and one for the time. The function returns a date/time value in UNIX format. Using confirm = true activates the interactive input mode where a point in time is selected by clicking on the chart.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "input.timeframe",
+      "description": "Adds an input to the Inputs tab of your script's Settings, which allows you to provide configuration options to script users. This function adds a dropdown that allows the user to select a specific timeframe via the timeframe selector and returns it as a string. The selector includes the custom timeframes a user may have added using the chart's Timeframe dropdown.",
+      "returnType": "input value",
+      "params": []
+    },
+    {
+      "name": "int",
+      "description": "Casts na or truncates float value to int",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "label",
+      "description": "Casts na to label",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "label.copy",
+      "description": "Clones the label object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "label.delete",
+      "description": "Deletes the specified label object. If it has already been deleted, does nothing.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.get_text",
+      "description": "Returns the text of this label object.",
+      "returnType": "String object containing the text of this label.",
+      "params": []
+    },
+    {
+      "name": "label.get_x",
+      "description": "Returns UNIX time or bar index (depending on the last xloc value set) of this label's position.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "label.get_y",
+      "description": "Returns price of this label's position.",
+      "returnType": "Floating point value representing price.",
+      "params": []
+    },
+    {
+      "name": "label.new",
+      "description": "Creates new label object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "label.set_color",
+      "description": "Sets label border and arrow color.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_point",
+      "description": "Sets the location of the id label to point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_size",
+      "description": "Sets arrow and text size of the specified label object.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_style",
+      "description": "Sets label style.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_text",
+      "description": "Sets label text",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_text_font_family",
+      "description": "The function sets the font family of the text inside the label.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_text_formatting",
+      "description": "Sets the formatting attributes the drawing applies to displayed text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_textalign",
+      "description": "Sets the alignment for the label text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_textcolor",
+      "description": "Sets color of the label text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_tooltip",
+      "description": "Sets the tooltip text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_x",
+      "description": "Sets bar index or bar time (depending on the xloc) of the label position.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_xloc",
+      "description": "Sets x-location and new bar index/time value.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_xy",
+      "description": "Sets bar index/time and price of the label position.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_y",
+      "description": "Sets price of the label position",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "label.set_yloc",
+      "description": "Sets new y-location calculation algorithm.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "library",
+      "description": "Declaration statement identifying a script as a library.",
+      "returnType": "",
+      "params": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "overlay",
+          "type": "bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "line",
+      "description": "Casts na to line",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "line.copy",
+      "description": "Clones the line object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "line.delete",
+      "description": "Deletes the specified line object. If it has already been deleted, does nothing.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.get_price",
+      "description": "Returns the price level of a line at a given bar index.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "line.get_x1",
+      "description": "Returns UNIX time or bar index (depending on the last xloc value set) of the first point of the line.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "line.get_x2",
+      "description": "Returns UNIX time or bar index (depending on the last xloc value set) of the second point of the line.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "line.get_y1",
+      "description": "Returns price of the first point of the line.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "line.get_y2",
+      "description": "Returns price of the second point of the line.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "line.new",
+      "description": "Creates new line object.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "line.set_color",
+      "description": "Sets the line color",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_extend",
+      "description": "Sets extending type of this line object. If extend=extend.none, draws segment starting at point (x1, y1) and ending at point (x2, y2). If extend is equal to extend.right or extend.left, draws a ray starting at point (x1, y1) or (x2, y2), respectively. If extend=extend.both, draws a straight line that goes through these points.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_first_point",
+      "description": "Sets the first point of the id line to point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_second_point",
+      "description": "Sets the second point of the id line to point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_style",
+      "description": "Sets the line style",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_width",
+      "description": "Sets the line width.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_x1",
+      "description": "Sets bar index or bar time (depending on the xloc) of the first point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_x2",
+      "description": "Sets bar index or bar time (depending on the xloc) of the second point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_xloc",
+      "description": "Sets x-location and new bar index/time values.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_xy1",
+      "description": "Sets bar index/time and price of the first point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_xy2",
+      "description": "Sets bar index/time and price of the second point",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_y1",
+      "description": "Sets price of the first point",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "line.set_y2",
+      "description": "Sets price of the second point.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "linefill",
+      "description": "Casts na to linefill.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "linefill.delete",
+      "description": "Deletes the specified linefill object. If it has already been deleted, does nothing.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "linefill.get_line1",
+      "description": "Returns the ID of the first line used in the id linefill.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "linefill.get_line2",
+      "description": "Returns the ID of the second line used in the id linefill.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "linefill.new",
+      "description": "Creates a new linefill object and displays it on the chart, filling the space between line1 and line2 with the color specified in color.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "linefill.set_color",
+      "description": "The function sets the color of the linefill object passed to it.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "log.error",
+      "description": "Converts the formatting string and value(s) into a formatted string, and sends the result to the \"Pine logs\" menu tagged with the \"error\" debug level.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "log.info",
+      "description": "Converts the formatting string and value(s) into a formatted string, and sends the result to the \"Pine logs\" menu tagged with the \"info\" debug level.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "log.warning",
+      "description": "Converts the formatting string and value(s) into a formatted string, and sends the result to the \"Pine logs\" menu tagged with the \"warning\" debug level.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "map.clear",
+      "description": "Clears the map, removing all key-value pairs from it.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "map.contains",
+      "description": "Returns true if the key was found in the id map, false otherwise.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "map.copy",
+      "description": "Creates a copy of an existing map.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "map.get",
+      "description": "Returns the value associated with the specified key in the id map.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "map.keys",
+      "description": "Returns an array of all the keys in the id map. The resulting array is a copy and any changes to it are not reflected in the original map.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "map.new<type,type>",
+      "description": "Creates a new map object: a collection that consists of key-value pairs, where all keys are of the keyType, and all values are of the valueType.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "map.put",
+      "description": "Puts a new key-value pair into the id map.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "map.put_all",
+      "description": "Puts all key-value pairs from the id2 map into the id map.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "map.remove",
+      "description": "Removes a key-value pair from the id map.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "map.size",
+      "description": "Returns the number of key-value pairs in the id map.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "map.values",
+      "description": "Returns an array of all the values in the id map. The resulting array is a copy and any changes to it are not reflected in the original map.",
+      "returnType": "map",
+      "params": []
+    },
+    {
+      "name": "math.abs",
+      "description": "Absolute value of number is number if number >= 0, or -number otherwise.",
+      "returnType": "simple float",
+      "params": [
+        {
+          "name": "number",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "math.acos",
+      "description": "The acos function returns the arccosine (in radians) of number such that cos(acos(y)) = y for y in range [-1, 1].",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.asin",
+      "description": "The asin function returns the arcsine (in radians) of number such that sin(asin(y)) = y for y in range [-1, 1].",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.atan",
+      "description": "The atan function returns the arctangent (in radians) of number such that tan(atan(y)) = y for any y.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.avg",
+      "description": "Calculates average of all given series (elementwise).",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.ceil",
+      "description": "Rounds the specified number up to the smallest whole number (\"int\" value) that is greater than or equal to it.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.cos",
+      "description": "The cos function returns the trigonometric cosine of an angle.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.exp",
+      "description": "The exp function of number is e raised to the power of number, where e is Euler's number.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.floor",
+      "description": "Rounds the specified number down to the largest whole number (\"int\" value) that is less than or equal to it.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.log",
+      "description": "Natural logarithm of any number > 0 is the unique y such that e^y = number.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "number",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "math.log10",
+      "description": "The common (or base 10) logarithm of number is the power to which 10 must be raised to obtain the number. 10^y = number.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.max",
+      "description": "Returns the greatest of multiple values.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "v1",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "v2",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v3",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v4",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v5",
+          "type": "series float",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "math.min",
+      "description": "Returns the smallest of multiple values.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "v1",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "v2",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v3",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v4",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "v5",
+          "type": "series float",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "math.pow",
+      "description": "Mathematical power function.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "base",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "exponent",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "math.random",
+      "description": "Returns a pseudo-random value. The function will generate a different sequence of values for each script execution. Using the same value for the optional seed argument will produce a repeatable sequence.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.round",
+      "description": "Returns the value of number rounded to the nearest integer, with ties rounding up. If the precision parameter is used, returns a float value rounded to that amount of decimal places.",
+      "returnType": "simple int",
+      "params": [
+        {
+          "name": "number",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "precision",
+          "type": "simple int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "math.round_to_mintick",
+      "description": "Returns the value rounded to the symbol's mintick, i.e. the nearest value that can be divided by syminfo.mintick, without the remainder, with ties rounding up.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "math.sign",
+      "description": "Sign (signum) of number is zero if number is zero, 1.0 if number is greater than zero, -1.0 if number is less than zero.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.sin",
+      "description": "The sin function returns the trigonometric sine of an angle.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.sqrt",
+      "description": "Square root of any number >= 0 is the unique y >= 0 such that y^2 = number.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "number",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "math.sum",
+      "description": "The sum function returns the sliding sum of last y values of x.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.tan",
+      "description": "The tan function returns the trigonometric tangent of an angle.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.todegrees",
+      "description": "Returns an approximately equivalent angle in degrees from an angle measured in radians.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "math.toradians",
+      "description": "Returns an approximately equivalent angle in radians from an angle measured in degrees.",
+      "returnType": "float",
+      "params": []
+    },
+    {
+      "name": "matrix.add_col",
+      "description": "The function adds a column at the column index of the id matrix. The column can consist of na values, or an array can be used to provide values.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.add_row",
+      "description": "The function adds a row at the row index of the id matrix. The row can consist of na values, or an array can be used to provide values.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.avg",
+      "description": "The function calculates the average of all elements in the matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.col",
+      "description": "The function creates a one-dimensional array from the elements of a matrix column.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.columns",
+      "description": "The function returns the number of columns in the matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.concat",
+      "description": "The function appends the m2 matrix to the m1 matrix.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.copy",
+      "description": "The function creates a new matrix which is a copy of the original.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.det",
+      "description": "The function returns the determinant of a square matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.diff",
+      "description": "The function returns a new matrix resulting from the subtraction between matrices id1 and id2, or of matrix id1 and an id2 scalar (a numerical value).",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.eigenvalues",
+      "description": "The function returns an array containing the eigenvalues of a square matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.eigenvectors",
+      "description": "Returns a matrix of eigenvectors, in which each column is an eigenvector of the id matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.elements_count",
+      "description": "The function returns the total number of all matrix elements.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.fill",
+      "description": "The function fills a rectangular area of the id matrix defined by the indices from_column to to_column (not including it) and from_row to to_row(not including it) with the value.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.get",
+      "description": "The function returns the element with the specified index of the matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.inv",
+      "description": "The function returns the inverse of a square matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.is_antidiagonal",
+      "description": "The function determines if the matrix is anti-diagonal (all elements outside the secondary diagonal are zero).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_antisymmetric",
+      "description": "The function determines if a matrix is antisymmetric (its transpose equals its negative).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_binary",
+      "description": "The function determines if the matrix is binary (when all elements of the matrix are 0 or 1).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_diagonal",
+      "description": "The function determines if the matrix is diagonal (all elements outside the main diagonal are zero).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_identity",
+      "description": "The function determines if a matrix is an identity matrix (elements with ones on the main diagonal and zeros elsewhere).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_square",
+      "description": "The function determines if the matrix is square (it has the same number of rows and columns).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_stochastic",
+      "description": "The function determines if the matrix is stochastic.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_symmetric",
+      "description": "The function determines if a square matrix is symmetric (elements are symmetric with respect to the main diagonal).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_triangular",
+      "description": "The function determines if the matrix is triangular (if all elements above or below the main diagonal are zero).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.is_zero",
+      "description": "The function determines if all elements of the matrix are zero.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.kron",
+      "description": "The function returns the Kronecker product for the id1 and id2 matrices.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.max",
+      "description": "The function returns the largest value from the matrix elements.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.median",
+      "description": "The function calculates the median (\"the middle\" value) of matrix elements.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.min",
+      "description": "The function returns the smallest value from the matrix elements.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.mode",
+      "description": "The function calculates the mode of the matrix, which is the most frequently occurring value from the matrix elements. When there are multiple values occurring equally frequently, the function returns the smallest of those values.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.mult",
+      "description": "The function returns a new matrix resulting from the product between the matrices id1 and id2, or between an id1 matrix and an id2 scalar (a numerical value), or between an id1 matrix and an id2 vector (an array of values).",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.new<type>",
+      "description": "The function creates a new matrix object. A matrix is a two-dimensional data structure containing rows and columns. All elements in the matrix must be of the type specified in the type template (\"<type>\").",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "matrix.pinv",
+      "description": "The function returns the pseudoinverse of a matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.pow",
+      "description": "The function calculates the product of the matrix by itself power times.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.rank",
+      "description": "The function calculates the rank of the matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.remove_col",
+      "description": "The function removes the column at column index of the id matrix and returns an array containing the removed column's values.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.remove_row",
+      "description": "The function removes the row at row index of the id matrix and returns an array containing the removed row's values.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.reshape",
+      "description": "The function rebuilds the id matrix to rows x cols dimensions.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.reverse",
+      "description": "The function reverses the order of rows and columns in the matrix id. The first row and first column become the last, and the last become the first.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.row",
+      "description": "The function creates a one-dimensional array from the elements of a matrix row.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.rows",
+      "description": "The function returns the number of rows in the matrix.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.set",
+      "description": "The function assigns value to the element at the row and column of the id matrix.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.sort",
+      "description": "The function rearranges the rows in the id matrix following the sorted order of the values in the column.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.submatrix",
+      "description": "The function extracts a submatrix of the id matrix within the specified indices.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.sum",
+      "description": "The function returns a new matrix resulting from the sum of two matrices id1 and id2, or of an id1 matrix and an id2 scalar (a numerical value).",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.swap_columns",
+      "description": "The function swaps the columns at the index column1 and column2 in the id matrix.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.swap_rows",
+      "description": "The function swaps the rows at the index row1 and row2 in the id matrix.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "matrix.trace",
+      "description": "The function calculates the trace of a matrix (the sum of the main diagonal's elements).",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "matrix.transpose",
+      "description": "The function creates a new, transposed version of the id. This interchanges the row and column index of each element.",
+      "returnType": "matrix",
+      "params": []
+    },
+    {
+      "name": "max_bars_back",
+      "description": "Function sets the maximum number of bars that is available for historical reference of a given built-in or user variable. When operator '[]' is applied to a variable - it is a reference to a historical value of that variable.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "minute",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "month",
+      "description": "",
+      "returnType": "int",
+      "params": [
+        {
+          "name": "time",
+          "type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "na",
+      "description": "Tests if x is na.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "nz",
+      "description": "Replaces NaN values with zeros (or given value) in a series.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "plot",
+      "description": "Plots a series of data on the chart.",
+      "returnType": "plot",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "linewidth",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "style",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "trackprice",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "histbase",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "join",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "editable",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "show_last",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "plotarrow",
+      "description": "Plots up and down arrows on the chart. Up arrow is drawn at every indicator positive value, down arrow is drawn at every negative value. If indicator returns na then no arrow is drawn. Arrows has different height, the more absolute indicator value the longer arrow is drawn.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "plotbar",
+      "description": "Plots ohlc bars on the chart.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "plotcandle",
+      "description": "Plots candles on the chart.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "plotchar",
+      "description": "Plots visual shapes using any given one Unicode character on the chart.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "plotshape",
+      "description": "Plots visual shapes on the chart.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "polyline.delete",
+      "description": "Deletes the specified polyline object. It has no effect if the id doesn't exist.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "polyline.new",
+      "description": "Creates a new polyline instance and displays it on the chart, sequentially connecting all of the points in the points array with line segments. The segments in the drawing can be straight or curved depending on the curved parameter.",
+      "returnType": "object id",
+      "params": []
+    },
+    {
+      "name": "request.currency_rate",
+      "description": "Provides a daily rate that can be used to convert a value expressed in the from currency to another in the to currency.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.dividends",
+      "description": "Requests dividends data for the specified symbol.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.earnings",
+      "description": "Requests earnings data for the specified symbol.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.economic",
+      "description": "Requests economic data for a symbol. Economic data includes information such as the state of a country's economy (GDP, inflation rate, etc.) or of a particular industry (steel production, ICU beds, etc.).",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.financial",
+      "description": "Requests financial series for symbol.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.quandl",
+      "description": "Note: This function has been deprecated due to the API change from NASDAQ Data Link. Requests for \"QUANDL\" symbols are no longer valid and requests for them return a runtime error.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "request.security",
+      "description": "Requests the result of an expression from a specified context (symbol and timeframe).",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.security_lower_tf",
+      "description": "Requests the results of an expression from a specified symbol on a timeframe lower than or equal to the chart's timeframe. It returns an array containing one element for each lower-timeframe bar within the chart bar. On a 5-minute chart, requesting data using a timeframe argument of \"1\" typically returns an array with five elements representing the value of the expression on each 1-minute bar, ordered by time with the earliest value first.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.seed",
+      "description": "Requests data from a user-maintained GitHub repository and returns it as a series. An in-depth tutorial on how to add new data can be found here.",
+      "returnType": "series",
+      "params": []
+    },
+    {
+      "name": "request.splits",
+      "description": "Requests splits data for the specified symbol.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "runtime.error",
+      "description": "When called, causes a runtime error with the error message specified in the message argument.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "second",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "str.contains",
+      "description": "Returns true if the source string contains the str substring, false otherwise.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.endswith",
+      "description": "Returns true if the source string ends with the substring specified in str, false otherwise.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.format",
+      "description": "Converts the formatting string and value(s) into a formatted string. The formatting string can contain literal text and one placeholder in curly braces {} for each value to be formatted. Each placeholder consists of the index of the required argument (beginning at 0) that will replace it, and an optional format specifier. The index represents the position of that argument in the str.format argument list.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.format_time",
+      "description": "Converts the time timestamp into a string formatted according to format and timezone.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "str.length",
+      "description": "Returns an integer corresponding to the amount of chars in that string.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.lower",
+      "description": "Returns a new string with all letters converted to lowercase.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.match",
+      "description": "Returns the new substring of the source string if it matches a regex regular expression, an empty string otherwise.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.pos",
+      "description": "Returns the position of the first occurrence of the str string in the source string, 'na' otherwise.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.repeat",
+      "description": "Constructs a new string containing the source string repeated repeat times with the separator injected between each repeated instance.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "str.replace",
+      "description": "Returns a new string with the Nth occurrence of the target string replaced by the replacement string, where N is specified in occurrence.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.replace_all",
+      "description": "Replaces each occurrence of the target string in the source string with the replacement string.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.split",
+      "description": "Divides a string into an array of substrings and returns its array id.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.startswith",
+      "description": "Returns true if the source string starts with the substring specified in str, false otherwise.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.substring",
+      "description": "Returns a new string that is a substring of the source string. The substring begins with the character at the index specified by begin_pos and extends to 'end_pos - 1' of the source string.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.tonumber",
+      "description": "Converts a value represented in string to its \"float\" equivalent.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.tostring",
+      "description": "",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.trim",
+      "description": "Constructs a new string with all consecutive whitespaces and other control characters (e.g., “\\n”, “\\t”, etc.) removed from the left and right of the source.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "str.upper",
+      "description": "Returns a new string with all letters converted to uppercase.",
+      "returnType": "string",
+      "params": []
+    },
+    {
+      "name": "strategy",
+      "description": "This declaration statement designates the script as a strategy and sets a number of strategy-related properties.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "shorttitle",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "overlay",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "precision",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "scale",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "pyramiding",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "calc_on_order_fills",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "calc_on_every_tick",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "max_bars_back",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "backtest_fill_limits_assumption",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "default_qty_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "default_qty_value",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "initial_capital",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "slippage",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "commission_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "commission_value",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "process_orders_on_close",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "close_entries_rule",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "margin_long",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "margin_short",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "explicit_plot_zorder",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "max_lines_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_labels_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "max_boxes_count",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "timeframe",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "timeframe_gaps",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "risk_free_rate",
+          "type": "float",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "strategy.cancel",
+      "description": "Cancels a pending or unfilled order with a specific identifier. If multiple unfilled orders share the same ID, calling this command with that ID as the id argument cancels all of them. If a script calls this command with an id representing the ID of a filled order, it has no effect.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "strategy.cancel_all",
+      "description": "Cancels all pending or unfilled orders, regardless of their identifiers.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "strategy.close",
+      "description": "Creates an order to exit from the part of a position opened by entry orders with a specific identifier. If multiple entries in the position share the same ID, the orders from this command apply to all those entries, starting from the first open trade, when its calls use that ID as the id argument.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "id",
+          "type": "simple string",
+          "required": true
+        },
+        {
+          "name": "qty",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "qty_percent",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "comment",
+          "type": "series string",
+          "required": false
+        },
+        {
+          "name": "alert_message",
+          "type": "series string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "strategy.close_all",
+      "description": "Creates an order to close an open position completely, regardless of the identifiers of the entry orders that opened or added to it.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.commission",
+      "description": "Returns the sum of entry and exit fees paid in the closed trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.entry_bar_index",
+      "description": "Returns the bar_index of the closed trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.entry_comment",
+      "description": "Returns the comment message of the closed trade's entry, or na if there is no entry with this trade_num.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.entry_id",
+      "description": "Returns the id of the closed trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.entry_price",
+      "description": "Returns the price of the closed trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.entry_time",
+      "description": "Returns the UNIX time of the closed trade's entry, expressed in milliseconds..",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.exit_bar_index",
+      "description": "Returns the bar_index of the closed trade's exit.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.exit_comment",
+      "description": "Returns the comment message of the closed trade's exit, or na if there is no entry with this trade_num.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.exit_id",
+      "description": "Returns the id of the closed trade's exit.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.exit_price",
+      "description": "Returns the price of the closed trade's exit.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.exit_time",
+      "description": "Returns the UNIX time of the closed trade's exit, expressed in milliseconds.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.max_drawdown",
+      "description": "Returns the maximum drawdown of the closed trade, i.e., the maximum possible loss during the trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.max_drawdown_percent",
+      "description": "Returns the maximum drawdown of the closed trade, i.e., the maximum possible loss during the trade, expressed as a percentage and calculated by formula: Lowest Value During Trade / (Entry Price x Quantity) * 100.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.max_runup",
+      "description": "Returns the maximum run up of the closed trade, i.e., the maximum possible profit during the trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.max_runup_percent",
+      "description": "Returns the maximum run-up of the closed trade, i.e., the maximum possible profit during the trade, expressed as a percentage and calculated by formula: Highest Value During Trade / (Entry Price x Quantity) * 100.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.profit",
+      "description": "Returns the profit/loss of the closed trade, expressed in strategy.account_currency. Losses are expressed as negative values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.profit_percent",
+      "description": "Returns the profit/loss value of the closed trade, expressed as a percentage. Losses are expressed as negative values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.closedtrades.size",
+      "description": "Returns the direction and the number of contracts traded in the closed trade. If the value is > 0, the market position was long. If the value is < 0, the market position was short.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.convert_to_account",
+      "description": "Converts the value from the currency that the symbol on the chart is traded in (syminfo.currency) to the currency used by the strategy (strategy.account_currency).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.convert_to_symbol",
+      "description": "Converts the value from the currency used by the strategy (strategy.account_currency) to the currency that the symbol on the chart is traded in (syminfo.currency).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.default_entry_qty",
+      "description": "Calculates the default quantity, in units, of an entry order from strategy.entry or strategy.order if it were to fill at the specified fill_price value. The calculation depends on several strategy properties, including default_qty_type, default_qty_value, currency, and other parameters in the strategy function and their representation in the \"Properties\" tab of the strategy's settings.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.entry",
+      "description": "Creates a new order to open or add to a position. If an unfilled order with the same id exists, a call to this command modifies that order.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "id",
+          "type": "simple string",
+          "required": true
+        },
+        {
+          "name": "direction",
+          "type": "simple string",
+          "required": true
+        },
+        {
+          "name": "qty",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "limit",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "stop",
+          "type": "series float",
+          "required": false
+        },
+        {
+          "name": "oca_name",
+          "type": "simple string",
+          "required": false
+        },
+        {
+          "name": "oca_type",
+          "type": "simple string",
+          "required": false
+        },
+        {
+          "name": "comment",
+          "type": "series string",
+          "required": false
+        },
+        {
+          "name": "alert_message",
+          "type": "series string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "strategy.exit",
+      "description": "Creates price-based orders to exit from an open position. If unfilled exit orders with the same id exist, calls to this command modify those orders. This command can generate more than one type of exit order, depending on the specified parameters. However, it does not create market orders. To exit from a position with a market order, use strategy.close or strategy.close_all.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.commission",
+      "description": "Returns the sum of entry and exit fees paid in the open trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.entry_bar_index",
+      "description": "Returns the bar_index of the open trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.entry_comment",
+      "description": "Returns the comment message of the open trade's entry, or na if there is no entry with this trade_num.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.entry_id",
+      "description": "Returns the id of the open trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.entry_price",
+      "description": "Returns the price of the open trade's entry.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.entry_time",
+      "description": "Returns the UNIX time of the open trade's entry, expressed in milliseconds.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.max_drawdown",
+      "description": "Returns the maximum drawdown of the open trade, i.e., the maximum possible loss during the trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.max_drawdown_percent",
+      "description": "Returns the maximum drawdown of the open trade, i.e., the maximum possible loss during the trade, expressed as a percentage and calculated by formula: Lowest Value During Trade / (Entry Price x Quantity) * 100.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.max_runup",
+      "description": "Returns the maximum run up of the open trade, i.e., the maximum possible profit during the trade, expressed in strategy.account_currency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.max_runup_percent",
+      "description": "Returns the maximum run-up of the open trade, i.e., the maximum possible profit during the trade, expressed as a percentage and calculated by formula: Highest Value During Trade / (Entry Price x Quantity) * 100.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.profit",
+      "description": "Returns the profit/loss of the open trade, expressed in strategy.account_currency. Losses are expressed as negative values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.profit_percent",
+      "description": "Returns the profit/loss of the open trade, expressed as a percentage. Losses are expressed as negative values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.opentrades.size",
+      "description": "Returns the direction and the number of contracts traded in the open trade. If the value is > 0, the market position was long. If the value is < 0, the market position was short.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.order",
+      "description": "Creates a new order to open, add to, or exit from a position. If an unfilled order with the same id exists, a call to this command modifies that order.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.allow_entry_in",
+      "description": "This function can be used to specify in which market direction the strategy.entry function is allowed to open positions.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.max_cons_loss_days",
+      "description": "The purpose of this rule is to cancel all pending orders, close all open positions and stop placing orders after a specified number of consecutive days with losses. The rule affects the whole strategy.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.max_drawdown",
+      "description": "The purpose of this rule is to determine maximum drawdown. The rule affects the whole strategy. Once the maximum drawdown value is reached, all pending orders are cancelled, all open positions are closed and no new orders can be placed.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.max_intraday_filled_orders",
+      "description": "The purpose of this rule is to determine maximum number of filled orders per 1 day (per 1 bar, if chart resolution is higher than 1 day). The rule affects the whole strategy. Once the maximum number of filled orders is reached, all pending orders are cancelled, all open positions are closed and no new orders can be placed till the end of the current trading session.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.max_intraday_loss",
+      "description": "The maximum loss value allowed during a day. It is specified either in money (base currency), or in percentage of maximum intraday equity (0 -100).",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "strategy.risk.max_position_size",
+      "description": "The purpose of this rule is to determine maximum size of a market position. The rule affects the following function: strategy.entry. The 'entry' quantity can be reduced (if needed) to such number of contracts/shares/lots/units, so the total position size doesn't exceed the value specified in 'strategy.risk.max_position_size'. If minimum possible quantity still violates the rule, the order will not be placed.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "string",
+      "description": "Casts na to string",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "syminfo.prefix",
+      "description": "Returns exchange prefix of the symbol, e.g. \"NASDAQ\".",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "syminfo.ticker",
+      "description": "Returns symbol name without exchange prefix, e.g. \"AAPL\".",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.alma",
+      "description": "Arnaud Legoux Moving Average. It uses Gaussian distribution as weights for moving average.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "offset",
+          "type": "simple float",
+          "required": true
+        },
+        {
+          "name": "sigma",
+          "type": "simple float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.atr",
+      "description": "Function atr (average true range) returns the RMA of true range. True range is max(high - low, abs(high - close[1]), abs(low - close[1])).",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "length",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.barssince",
+      "description": "Counts the number of bars since the last time the condition was true.",
+      "returnType": "series int",
+      "params": [
+        {
+          "name": "condition",
+          "type": "series bool",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.bb",
+      "description": "Bollinger Bands. A Bollinger Band is a technical analysis tool defined by a set of lines plotted two standard deviations (positively and negatively) away from a simple moving average (SMA) of the security's price, but can be adjusted to user preferences.",
+      "returnType": "[series float, series float, series float]",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "mult",
+          "type": "simple float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.bbw",
+      "description": "Bollinger Bands Width. The Bollinger Band Width is the difference between the upper and the lower Bollinger Bands divided by the middle band.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "mult",
+          "type": "simple float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.cci",
+      "description": "The CCI (commodity channel index) is calculated as the difference between the typical price of a commodity and its simple moving average, divided by the mean absolute deviation of the typical price. The index is scaled by an inverse factor of 0.015 to provide more readable numbers.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.change",
+      "description": "Compares the current source value to its value length bars ago and returns the difference.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.cmo",
+      "description": "Chande Momentum Oscillator. Calculates the difference between the sum of recent gains and the sum of recent losses and then divides the result by the sum of all price movement over the same period.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.cog",
+      "description": "The cog (center of gravity) is an indicator based on statistics and the Fibonacci golden ratio.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.correlation",
+      "description": "Correlation coefficient. Describes the degree to which two series tend to deviate from their ta.sma values.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.cross",
+      "description": "",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.crossover",
+      "description": "The source1-series is defined as having crossed over source2-series if, on the current bar, the value of source1 is greater than the value of source2, and on the previous bar, the value of source1 was less than or equal to the value of source2.",
+      "returnType": "series bool",
+      "params": [
+        {
+          "name": "source1",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "source2",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.crossunder",
+      "description": "The source1-series is defined as having crossed under source2-series if, on the current bar, the value of source1 is less than the value of source2, and on the previous bar, the value of source1 was greater than or equal to the value of source2.",
+      "returnType": "series bool",
+      "params": [
+        {
+          "name": "source1",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "source2",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.cum",
+      "description": "Cumulative (total) sum of source. In other words it's a sum of all elements of source.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.dev",
+      "description": "Measure of difference between the series and it's ta.sma",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.dmi",
+      "description": "The dmi function returns the directional movement index.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.ema",
+      "description": "The ema function returns the exponentially weighted moving average. In ema weighting factors decrease exponentially. It calculates by using a formula: EMA = alpha * source + (1 - alpha) * EMA[1], where alpha = 2 / (length + 1).",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.falling",
+      "description": "Test if the source series is now falling for length bars long.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.highest",
+      "description": "Highest value for a given number of bars back.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.highestbars",
+      "description": "Highest value offset for a given number of bars back.",
+      "returnType": "series int",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.hma",
+      "description": "The hma function returns the Hull Moving Average.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.kc",
+      "description": "Keltner Channels. Keltner channel is a technical analysis indicator showing a central moving average line plus channel lines at a distance above and below.",
+      "returnType": "[series float, series float, series float]",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "mult",
+          "type": "simple float",
+          "required": true
+        },
+        {
+          "name": "useTrueRange",
+          "type": "simple bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.kcw",
+      "description": "Keltner Channels Width. The Keltner Channels Width is the difference between the upper and the lower Keltner Channels divided by the middle channel.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "series",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "mult",
+          "type": "simple float",
+          "required": true
+        },
+        {
+          "name": "useTrueRange",
+          "type": "simple bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.linreg",
+      "description": "Linear regression curve. A line that best fits the prices specified over a user-defined time period. It is calculated using the least squares method. The result of this function is calculated using the formula: linreg = intercept + slope * (length - 1 - offset), where intercept and slope are the values calculated with the least squares method on source series.",
+      "returnType": "Linear regression curve.",
+      "params": []
+    },
+    {
+      "name": "ta.lowest",
+      "description": "Lowest value for a given number of bars back.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.lowestbars",
+      "description": "Lowest value offset for a given number of bars back.",
+      "returnType": "series int",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.macd",
+      "description": "MACD (moving average convergence/divergence). It is supposed to reveal changes in the strength, direction, momentum, and duration of a trend in a stock's price.",
+      "returnType": "[series float, series float, series float]",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "fastlen",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "slowlen",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "siglen",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.max",
+      "description": "Returns the all-time high value of source from the beginning of the chart up to the current bar.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.median",
+      "description": "Returns the median of the series.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.mfi",
+      "description": "Money Flow Index. The Money Flow Index (MFI) is a technical oscillator that uses price and volume for identifying overbought or oversold conditions in an asset.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.min",
+      "description": "Returns the all-time low value of source from the beginning of the chart up to the current bar.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.mode",
+      "description": "Returns the mode of the series. If there are several values with the same frequency, it returns the smallest value.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.mom",
+      "description": "Momentum of source price and source price length bars ago. This is simply a difference: source - source[length].",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.percentile_linear_interpolation",
+      "description": "Calculates percentile using method of linear interpolation between the two nearest ranks.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.percentile_nearest_rank",
+      "description": "Calculates percentile using method of Nearest Rank.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.percentrank",
+      "description": "Percent rank is the percents of how many previous values was less than or equal to the current value of given series.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.pivot_point_levels",
+      "description": "Calculates the pivot point levels using the specified type and anchor.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.pivothigh",
+      "description": "This function returns price of the pivot high point. It returns 'NaN', if there was no pivot high point.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.pivotlow",
+      "description": "This function returns price of the pivot low point. It returns 'NaN', if there was no pivot low point.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.range",
+      "description": "Returns the difference between the min and max values in a series.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.rci",
+      "description": "Calculates the Rank Correlation Index (RCI), which measures the directional consistency of price movements. It evaluates the monotonic relationship between a source series and the bar index over length bars using Spearman's rank correlation coefficient. The resulting value is scaled to a range of -100 to 100, where 100 indicates the source consistently increased over the period, and -100 indicates it consistently decreased. Values between -100 and 100 reflect varying degrees of upward or downward consistency.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ta.rising",
+      "description": "Test if the source series is now rising for length bars long.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.rma",
+      "description": "Moving average used in RSI. It is the exponentially weighted moving average with alpha = 1 / length.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.roc",
+      "description": "Calculates the percentage of change (rate of change) between the current value of source and its value length bars ago.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.rsi",
+      "description": "Relative strength index. It is calculated using the ta.rma() of upward and downward changes of source over the last length bars.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.sar",
+      "description": "Parabolic SAR (parabolic stop and reverse) is a method devised by J. Welles Wilder, Jr., to find potential reversals in the market price direction of traded goods.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.sma",
+      "description": "The sma function returns the moving average, that is the sum of last y values of x, divided by y.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.stdev",
+      "description": "",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "biased",
+          "type": "series bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.stoch",
+      "description": "Stochastic. It is calculated by a formula: 100 * (close - lowest(low, length)) / (highest(high, length) - lowest(low, length)).",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.supertrend",
+      "description": "The Supertrend Indicator. The Supertrend is a trend following indicator.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.swma",
+      "description": "Symmetrically weighted moving average with fixed length: 4. Weights: [1/6, 2/6, 2/6, 1/6].",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.tr",
+      "description": "Calculates the current bar's true range. Unlike a bar's actual range (high - low), true range accounts for potential gaps by taking the maximum of the current bar's actual range and the absolute distances from the previous bar's close to the current bar's high and low. The formula is: math.max(high - low, math.abs(high - close[1]), math.abs(low - close[1]))",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "handle_na",
+          "type": "bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.tsi",
+      "description": "True strength index. It uses moving averages of the underlying momentum of a financial instrument.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.valuewhen",
+      "description": "Returns the value of the source series on the bar where the condition was true on the nth most recent occurrence.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.variance",
+      "description": "Variance is the expectation of the squared deviation of a series from its mean (ta.sma), and it informally measures how far a set of numbers are spread out from their mean.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        },
+        {
+          "name": "biased",
+          "type": "series bool",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ta.vwap",
+      "description": "Volume weighted average price.",
+      "returnType": "series float",
+      "params": []
+    },
+    {
+      "name": "ta.vwma",
+      "description": "The vwma function returns volume-weighted moving average of source for length bars back. It is the same as: sma(source * volume, length) / sma(volume, length).",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.wma",
+      "description": "The wma function returns weighted moving average of source for length bars back. In wma weighting factors decrease in arithmetical progression.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "source",
+          "type": "series float",
+          "required": true
+        },
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ta.wpr",
+      "description": "Williams %R. The oscillator shows the current closing price in relation to the high and low of the past 'length' bars.",
+      "returnType": "series float",
+      "params": [
+        {
+          "name": "length",
+          "type": "simple int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "description": "Casts na to table",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "table.cell",
+      "description": "The function defines a cell in the table and sets its attributes.",
+      "returnType": "void",
+      "params": [
+        {
+          "name": "table_id",
+          "type": "table",
+          "required": true
+        },
+        {
+          "name": "column",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "row",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "height",
+          "type": "float",
+          "required": false
+        },
+        {
+          "name": "text_color",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "text_halign",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "text_valign",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "text_size",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "bgcolor",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "tooltip",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "text_font_family",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "table.cell_set_bgcolor",
+      "description": "The function sets the background color of the cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_height",
+      "description": "The function sets the height of cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text",
+      "description": "The function sets the text in the specified cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_color",
+      "description": "The function sets the color of the text inside the cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_font_family",
+      "description": "The function sets the font family of the text inside the cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_formatting",
+      "description": "Sets the formatting attributes the drawing applies to displayed text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_halign",
+      "description": "The function sets the horizontal alignment of the cell's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_size",
+      "description": "The function sets the size of the cell's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_text_valign",
+      "description": "The function sets the vertical alignment of a cell's text.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_tooltip",
+      "description": "The function sets the tooltip in the specified cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.cell_set_width",
+      "description": "The function sets the width of the cell.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.clear",
+      "description": "The function removes a cell or a sequence of cells from the table. The cells are removed in a rectangle shape where the start_column and start_row specify the top-left corner, and end_column and end_row specify the bottom-right corner.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.delete",
+      "description": "The function deletes a table.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.merge_cells",
+      "description": "The function merges a sequence of cells in the table into one cell. The cells are merged in a rectangle shape where the start_column and start_row specify the top-left corner, and end_column and end_row specify the bottom-right corner.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.new",
+      "description": "The function creates a new table.",
+      "returnType": "table",
+      "params": [
+        {
+          "name": "position",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "columns",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "rows",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "bgcolor",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "frame_color",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "frame_width",
+          "type": "int",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": "color",
+          "required": false
+        },
+        {
+          "name": "border_width",
+          "type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "table.set_bgcolor",
+      "description": "The function sets the background color of a table.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.set_border_color",
+      "description": "The function sets the color of the borders (excluding the outer frame) of the table's cells.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.set_border_width",
+      "description": "The function sets the width of the borders (excluding the outer frame) of the table's cells.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.set_frame_color",
+      "description": "The function sets the color of the outer frame of a table.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.set_frame_width",
+      "description": "The function set the width of the outer frame of a table.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "table.set_position",
+      "description": "The function sets the position of a table.",
+      "returnType": "void",
+      "params": []
+    },
+    {
+      "name": "ticker.heikinashi",
+      "description": "Creates a ticker identifier for requesting Heikin Ashi bar values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.inherit",
+      "description": "Constructs a ticker ID for the specified symbol with additional parameters inherited from the ticker ID passed into the function call, allowing the script to request a symbol's data using the same modifiers that the from_tickerid has, including extended session, dividend adjustment, currency conversion, non-standard chart types, back-adjustment, settlement-as-close, etc.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.kagi",
+      "description": "Creates a ticker identifier for requesting Kagi values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.linebreak",
+      "description": "Creates a ticker identifier for requesting Line Break values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.modify",
+      "description": "Creates a ticker identifier for requesting additional data for the script.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.new",
+      "description": "Creates a ticker identifier for requesting additional data for the script.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.pointfigure",
+      "description": "Creates a ticker identifier for requesting Point & Figure values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.renko",
+      "description": "Creates a ticker identifier for requesting Renko values.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "ticker.standard",
+      "description": "Creates a ticker to request data from a standard chart that is unaffected by modifiers like extended session, dividend adjustment, currency conversion, and the calculations of non-standard chart types: Heikin Ashi, Renko, etc. Among other things, this makes it possible to retrieve standard chart values when the script is running on a non-standard chart.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "time",
+      "description": "The time function returns the UNIX time of the current bar for the specified timeframe and session or NaN if the time point is out of session.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "time_close",
+      "description": "Returns the UNIX time of the current bar's close for the specified timeframe and session, or na if the time point is outside the session. On tick charts and price-based charts such as Renko, line break, Kagi, point & figure, and range, this function returns an na timestamp for the latest realtime bar (because the future closing time is unpredictable), but a valid timestamp for any previous bar.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "timeframe.change",
+      "description": "Detects changes in the specified timeframe.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "timeframe.from_seconds",
+      "description": "Converts a number of seconds into a valid timeframe string.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "timeframe.in_seconds",
+      "description": "Converts a timeframe string into seconds.",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "timestamp",
+      "description": "Function timestamp returns UNIX time of specified date and time.",
+      "returnType": "value",
+      "params": []
+    },
+    {
+      "name": "weekofyear",
+      "description": "",
+      "returnType": "",
+      "params": []
+    },
+    {
+      "name": "year",
+      "description": "",
+      "returnType": "int",
+      "params": [
+        {
+          "name": "time",
+          "type": "int",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "missing_types_count": 409
+}
