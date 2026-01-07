@@ -4,38 +4,77 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
 
 ## 📁 Repository Structure
 
-- [**pine-script-extension/**](pine-script-extension/): The primary VS Code extension source, including:
-  - **Language Client**: VS Code side integration.
-  - **Language Server**: The "Pine Script Pro" analyzer (Type system, resilient symbol collection).
-  - **WASM Binaries**: Pre-built Tree-sitter parsers.
-- [**tree-sitter-pinescript/**](tree-sitter-pinescript/): The custom grammar for Pine Script v6.
-  - Includes the **patched `scanner.c`** which ensures stable performance in WebAssembly environments by disabling problematic indentation-based parsing.
-- [**pine-script-extension/server/scripts/update_core_params.js**](pine-script-extension/server/scripts/update_core_params.js): Maintenance script for synchronizing built-in function metadata (`definitions.json`).
+- [**pine-script-extension/**](pine-script-extension/): The primary VS Code extension source.
+  - **client/**: VS Code side integration (Language Client).
+  - **server/**: The "Pine Script Pro" analyzer (Language Server).
+  - **server/scripts/**: Maintenance scripts for metadata.
+- [**tree-sitter-pinescript/**](tree-sitter-pinescript/): Custom grammar for Pine Script v6 (Patched for WASM stability).
+
+---
 
 ## 🚀 Getting Started
 
-To install the extension, we recommend using the pre-compiled `.vsix` from the [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases) page.
+### Prerequisites
+- **Node.js**: v18.0.0 or higher.
+- **npm**: v9.0.0 or higher.
 
-### Source Build
+### Quick Installation (VSIX)
+The easiest way to use Pine Script Pro is to install the pre-compiled extension:
+1. Download the latest `pine-script-pro-1.0.0.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases).
+2. In VS Code, run `Cmd+Shift+P` → **Extensions: Install from VSIX...**
+3. Select the file and restart VS Code.
+
+### Building from Source
+If you want to contribute or build the extension yourself:
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/revanthpobala/pinescript-vscode-extension.git
 cd pinescript-vscode-extension/pine-script-extension
 
-# Install dependencies
-npm install
+# 2. Install dependencies (Top-level, Client, and Server)
+npm run postinstall
 
-# Bundle and Package
+# 3. Build the Extension
+# This compiles TypeScript and bundles everything with esbuild
 npm run bundle
+
+# 4. Package as VSIX
 npx vsce package
 ```
 
-## 🛠 Features Highlights
+---
 
-- **Ultra-Resilient Linter**: Our custom "Greedy Symbol Scrapper" recovers definitions even from broken parse trees.
-- **Pine v6 Lambda Support**: Full awareness of assigned functions and anonymous lambdas.
-- **High-Performance WASM**: Core parser runs on WebAssembly for sub-millisecond AST generation.
+## 🛠 Developer Guide
+
+### Running Quality Tests
+The project includes a dedicated test suite for verifying linter logic and type infection.
+
+```bash
+cd pine-script-extension/server
+npm run compile
+node out/tests/test_runner.js
+```
+*Note: New test cases should be added to `pine-script-extension/server/src/tests/cases.json`.*
+
+### Updating Built-in Metadata
+To update function signatures or return types in the linter:
+1. Edit `pine-script-extension/server/scripts/update_core_params.js`.
+2. Run the script:
+   ```bash
+   cd pine-script-extension/server/scripts
+   node update_core_params.js
+   ```
+
+### Regenerating the Parser (Tree-Sitter)
+If you modify the grammar:
+```bash
+cd tree-sitter-pinescript
+npx tree-sitter build --wasm
+cp tree-sitter-pinescript.wasm ../pine-script-extension/server/wasm/
+```
+
+---
 
 ## ⚖️ License
-
-The code in this repository is licensed under the MIT License.
+This project is licensed under the MIT License. Developed for the Pine Script community.

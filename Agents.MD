@@ -1,80 +1,75 @@
 # AI Agent Guide: Pine Script Static Checker
 
-Context document for AI agents working on this codebase.
+Welcome, Agent. This document covers the core philosophies and maintenance workflows of the **Pine Script Pro** linter.
 
-## Architecture
+---
+
+## 🏛️ Architecture
 
 ```
 pine-script-extension/
-├── client/src/extension.ts    # VS Code extension entry, starts Language Server
+├── client/src/extension.ts        # Language Client entry point
 ├── server/
-│   ├── src/server.ts          # LSP server, handles hover/completion
-│   ├── src/analyzer.ts        # Core type infection analysis
-│   ├── src/types.ts           # PineType, Qualifier enum
-│   └── src/data/definitions.json  # Function signatures (800+ functions)
-└── wasm/tree-sitter-pinescript.wasm  # Parser (no native binaries)
+│   ├── src/server.ts              # LSP server (Hover, Completion, Signature)
+│   ├── src/analyzer.ts            # Core Logic: Type Analysis & Symbol Collection
+│   ├── src/types.ts               # PineType, Qualifier enum
+│   ├── src/data/definitions.json  # Metadata for 800+ built-in functions
+│   └── scripts/                   # Maintenance scripts
+└── tree-sitter-pinescript/        # Grammer Source (Patched scanner.c)
 ```
 
-## Key Files
+---
 
-### `analyzer.ts`
-- **Symbol Table**: Tracks variable types (`Map<string, PineType>`)
-- **Built-ins**: Pre-populated with `open`, `high`, `low`, `close`, `volume`, etc.
-- **Type Inference**: Handles literals, identifiers, binary expressions, function calls
-- **input.* Handling**: Returns `Input` qualifier for `input.int()`, `input.float()`, etc.
-- **Unknown Types**: Silently skipped to avoid false positives
+## 🛡️ Core Philosophy: The "No Noise" Policy
 
-### `definitions.json`
-- 800+ Pine Script functions with signatures
-- Many have `UNKNOWN_REQUIRES_MANUAL_REVIEW` - these need completion
-- Key functions like `ta.sma`, `ta.ema` have full type info
+Because the WASM-based Pine Script parser is sensitive to indentation errors (due to a disabled scanner for stability), it frequently generates `ERROR` nodes in the AST.
 
-### `types.ts`
-```typescript
-enum Qualifier { Const = 0, Input = 1, Simple = 2, Series = 3 }
-interface PineType { name: string; qualifier: Qualifier }
-```
+**Critical Instruction**: Do NOT report diagnostics on symbols or blocks that the parser doesn't fully understand. We prioritize **zero false positives** over 100% error coverage.
 
-## Type Infection Rules
+### Resilient Symbol Collection (Greedy Scrapper)
+Found in `analyzer.ts` (Pass 1):
+- When an `ERROR` node is encountered, we recursively scrape *all* identifiers inside it and add them to the `symbolTable`. 
+- This ensures that if a user defines a function inside a messy block, we don't flag its usage as an "Undefined Function" elsewhere.
 
-1. **Qualifier Hierarchy**: Const < Input < Simple < Series
-2. **Passing Rule**: Lower qualifier can be passed where higher is expected
-3. **Infection**: When a Simple var is assigned Series, it becomes Series
-4. **Error Case**: Series value passed to Simple parameter → diagnostic
+---
 
-## Common Tasks
+## 🧪 Test-Driven Development (TDD)
 
-### Add New Built-in Variables
-Edit `analyzer.ts` → `initializeBuiltIns()`:
-```typescript
-this.symbolTable.set('bar_index', { name: 'int', qualifier: Qualifier.Series });
-```
+All linter logic must be verified via our custom test runner.
 
-### Add Function Definitions
-Edit `definitions.json`:
-```json
-{
-  "name": "ta.ema",
-  "returnType": "series float",
-  "params": [
-    { "name": "source", "type": "series float", "required": true },
-    { "name": "length", "type": "simple int", "required": true }
-  ]
-}
-```
+1.  **Add a Test Case**: Edit `pine-script-extension/server/src/tests/cases.json`.
+2.  **Format**:
+    ```json
+    {
+      "name": "Describe the test",
+      "code": "pine code here",
+      "expectedErrors": 1,
+      "expectedMessages": ["Expected error message fragment"]
+    }
+    ```
+3.  **Run Tests**:
+    ```bash
+    cd pine-script-extension/server
+    npm run compile && node out/tests/test_runner.js
+    ```
 
-### Regenerate WASM
-```bash
-cd tree-sitter-pinescript
-npx tree-sitter build --wasm
-cp tree-sitter-pinescript.wasm ../pine-script-extension/server/wasm/
-```
+---
 
-## Build Commands
+## 🔧 Maintenance Workflows
+
+### Updating Built-ins
+ Built-in metadata (parameters, return types) is stored in `definitions.json`. This file is partially managed by `scripts/update_core_params.js`. If you add logic for a new namespace (e.g., `request.*`), update either the JSON or the script.
+
+### Handling WASM Crashes
+The `tree-sitter-pinescript/src/scanner.c` has been modified to disable the indentation scanner. This prevents WASM heap overflows but results in more `ERROR` nodes in the AST. Always verify the `analyzer.ts` resilient collection if adding new parsing logic.
+
+---
+
+## 🚀 Build Commands
 
 ```bash
 cd pine-script-extension
-cd client && npm run compile
-cd ../server && npm run compile
-cd .. && npx @vscode/vsce package --allow-missing-repository
+npm run postinstall  # Installs all sub-dependencies
+npm run bundle       # Bundles client/server with esbuild
+npx vsce package     # Generates VSIX
 ```
