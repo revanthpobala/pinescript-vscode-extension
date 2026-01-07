@@ -10,7 +10,7 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
   - **WASM Binaries**: Pre-built Tree-sitter parsers.
 - [**tree-sitter-pinescript/**](tree-sitter-pinescript/): The custom grammar for Pine Script v6.
   - Includes the **patched `scanner.c`** which ensures stable performance in WebAssembly environments by disabling problematic indentation-based parsing.
-- **update_core_params.js**: Maintenance script for synchronizing built-in function metadata (`definitions.json`).
+- [**pine-script-extension/server/scripts/update_core_params.js**](pine-script-extension/server/scripts/update_core_params.js): Maintenance script for synchronizing built-in function metadata (`definitions.json`).
 
 ## 🚀 Getting Started
 

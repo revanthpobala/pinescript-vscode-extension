@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, 'pine-script-extension/server/src/data/definitions.json');
+const filePath = path.join(__dirname, '../src/data/definitions.json');
 const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
 const updates = {
