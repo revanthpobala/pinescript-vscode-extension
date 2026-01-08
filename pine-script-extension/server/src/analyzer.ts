@@ -202,8 +202,8 @@ export class Analyzer {
         while (stack.length > 0) {
             const node = stack.pop()!;
 
-            // 1. Collect Function Definitions
-            if (node.type === 'function_definition') {
+            // 1. Collect Function and Method Definitions
+            if (node.type === 'function_definition' || node.type === 'method_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode?.text) {
                     const params: any[] = [];
@@ -223,6 +223,29 @@ export class Analyzer {
                         returnType: 'any',
                         params: params
                     });
+                }
+            }
+
+            // 1b. Collect Type Definitions (UDTs)
+            if (node.type === 'type_definition') {
+                const nameNode = node.childForFieldName('name');
+                if (nameNode?.text) {
+                    this.symbolTable.set(nameNode.text, { name: 'type', qualifier: Qualifier.Simple });
+                    // Also allow Name.new()
+                    this.userFunctionTable.set(`${nameNode.text}.new`, {
+                        name: `${nameNode.text}.new`,
+                        description: 'UDT Constructor',
+                        returnType: 'any',
+                        params: []
+                    });
+                }
+            }
+
+            // 1c. Collect Import Aliases
+            if (node.type === 'import_statement') {
+                const aliasNode = node.childForFieldName('alias');
+                if (aliasNode?.text) {
+                    this.symbolTable.set(aliasNode.text, { name: 'namespace', qualifier: Qualifier.Simple });
                 }
             }
 
@@ -446,7 +469,14 @@ export class Analyzer {
                 return;
             }
 
-            // Still not found? Report as undefined.
+            // Still not found? 
+            // NO NOISE POLICY: If the function name contains a dot, it's likely a library function 
+            // or a method call that we haven't resolved. Do not report as undefined.
+            if (funcName.includes('.')) {
+                return;
+            }
+
+            // Report as undefined.
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(funcNameNode),

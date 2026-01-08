@@ -28,8 +28,11 @@ module.exports = grammar({
 
     _statement: $ => choice(
       $.version_directive,
+      $.import_statement,
       $.variable_declaration,
       $.function_definition,
+      $.method_definition,
+      $.type_definition,
       $.assignment,
       $.function_call,
       $.if_statement,
@@ -40,6 +43,14 @@ module.exports = grammar({
     comment: $ => token(seq('//', /.*/)),
 
     version_directive: $ => seq('//@version=', /\d+/),
+
+    import_statement: $ => seq(
+      'import',
+      field('library', $.library_path),
+      optional(seq('as', field('alias', $.identifier)))
+    ),
+
+    library_path: $ => /[a-zA-Z0-9_]+\/[a-zA-Z0-9_]+\/\d+/,
 
     // Example: "var int x = 10" or "x = 10" or "[x, y] = request.security(...)"
     variable_declaration: $ => seq(
@@ -55,12 +66,30 @@ module.exports = grammar({
 
     // Example: "myFunc(float x, y) => x + y"
     function_definition: $ => seq(
+      optional('export'),
       field('name', $.identifier),
       '(',
       optional(field('parameters', $.parameter_list)),
       ')',
       '=>',
       field('body', choice($._expression, $.block))
+    ),
+
+    method_definition: $ => seq(
+      optional('export'),
+      'method',
+      field('name', $.identifier),
+      '(',
+      optional(field('parameters', $.parameter_list)),
+      ')',
+      '=>',
+      field('body', choice($._expression, $.block))
+    ),
+
+    type_definition: $ => seq(
+      'type',
+      field('name', $.identifier),
+      $.block
     ),
 
     parameter_list: $ => seq(

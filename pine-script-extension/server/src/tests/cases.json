@@ -155,5 +155,23 @@
         "code": "//@version=6\nindicator('Test')\nfindClosestKeyLevel(float[] lvlArray, float targetPrice, bool isSup, float minDst) => 1\nkeyRes = findClosestKeyLevel(array.new_float(1), close, false, 1.0)\n",
         "expectedErrors": 0,
         "description": "Verify 4-argument custom function with array param."
+    },
+    {
+        "name": "Import and Method calls",
+        "code": "//@version=6\nimport TradingView/RiskMetrics/3 as rm\nx = rm.getPeriodicReturns(60)\nmethod myMethod(int self, float x) => x * self\ny = 10.myMethod(2.0)",
+        "expectedErrors": 0,
+        "description": "Verify imports don't break parsing and methods/dot-calls are permissive."
+    },
+    {
+        "name": "Exported function",
+        "code": "//@version=6\nexport myFunc(int x) => x\ny = myFunc(10)",
+        "expectedErrors": 0,
+        "description": "Verify export keyword doesn't break function discovery."
+    },
+    {
+        "name": "UDT and Constructor",
+        "code": "//@version=6\ntype MyType\n    int x = 1\nobj = MyType.new()\n",
+        "expectedErrors": 0,
+        "description": "Verify UDT definitions and .new() constructor."
     }
 ]
