@@ -912,7 +912,7 @@
     },
     {
       "type": "PATTERN",
-      "value": "[\\s\\uFEFF\\u2060\\u200B\\u00A0]"
+      "value": "[ \\t\\uFEFF\\u2060\\u200B\\u00A0]"
     }
   ],
   "conflicts": [

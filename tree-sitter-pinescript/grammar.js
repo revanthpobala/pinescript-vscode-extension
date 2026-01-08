@@ -4,7 +4,7 @@ module.exports = grammar({
   // Extras are tokens that can appear anywhere (whitespace, comments)
   extras: $ => [
     $.comment,
-    /[\s\uFEFF\u2060\u200B\u00A0]/
+    /[ \t\uFEFF\u2060\u200B\u00A0]/
   ],
 
   // External tokens handled by scanner.c (for indentation)
