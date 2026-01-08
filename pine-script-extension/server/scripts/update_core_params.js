@@ -86,11 +86,11 @@ const updates = {
         { "name": "length", "type": "int", "required": true }
     ],
     'array.new_float': [
-        { "name": "size", "type": "int", "required": true },
+        { "name": "size", "type": "int", "required": false },
         { "name": "initial_value", "type": "float", "required": false }
     ],
     'array.new_int': [
-        { "name": "size", "type": "int", "required": true },
+        { "name": "size", "type": "int", "required": false },
         { "name": "initial_value", "type": "int", "required": false }
     ],
     'array.push': [

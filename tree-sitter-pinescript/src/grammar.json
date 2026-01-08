@@ -805,55 +805,72 @@
       ]
     },
     "type": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "int"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "int"
+            },
+            {
+              "type": "STRING",
+              "value": "float"
+            },
+            {
+              "type": "STRING",
+              "value": "bool"
+            },
+            {
+              "type": "STRING",
+              "value": "string"
+            },
+            {
+              "type": "STRING",
+              "value": "color"
+            },
+            {
+              "type": "STRING",
+              "value": "label"
+            },
+            {
+              "type": "STRING",
+              "value": "line"
+            },
+            {
+              "type": "STRING",
+              "value": "linefill"
+            },
+            {
+              "type": "STRING",
+              "value": "table"
+            },
+            {
+              "type": "STRING",
+              "value": "box"
+            },
+            {
+              "type": "STRING",
+              "value": "polyline"
+            },
+            {
+              "type": "STRING",
+              "value": "chart.point"
+            }
+          ]
         },
         {
-          "type": "STRING",
-          "value": "float"
-        },
-        {
-          "type": "STRING",
-          "value": "bool"
-        },
-        {
-          "type": "STRING",
-          "value": "string"
-        },
-        {
-          "type": "STRING",
-          "value": "color"
-        },
-        {
-          "type": "STRING",
-          "value": "label"
-        },
-        {
-          "type": "STRING",
-          "value": "line"
-        },
-        {
-          "type": "STRING",
-          "value": "linefill"
-        },
-        {
-          "type": "STRING",
-          "value": "table"
-        },
-        {
-          "type": "STRING",
-          "value": "box"
-        },
-        {
-          "type": "STRING",
-          "value": "polyline"
-        },
-        {
-          "type": "STRING",
-          "value": "chart.point"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "[]"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },

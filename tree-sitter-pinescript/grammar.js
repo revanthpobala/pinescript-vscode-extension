@@ -166,8 +166,11 @@ module.exports = grammar({
       prec.left(-1, seq($._expression, choice('and', 'or'), $._expression))
     ),
 
-    type: $ => choice(
-      'int', 'float', 'bool', 'string', 'color', 'label', 'line', 'linefill', 'table', 'box', 'polyline', 'chart.point'
+    type: $ => seq(
+      choice(
+        'int', 'float', 'bool', 'string', 'color', 'label', 'line', 'linefill', 'table', 'box', 'polyline', 'chart.point'
+      ),
+      optional('[]')
     ),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_.]*/,

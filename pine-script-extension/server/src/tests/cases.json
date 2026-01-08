@@ -137,5 +137,23 @@
         "code": "//@version=6\nindicator('Test')\ntbl = table.new(position.top_right, 1, 1)\ntable.cell(tbl, 0, 0, 'txt', 1, 1, color.red, text_halign=text.align_left, text_valign=text.align_center, text_size=size.small, bgcolor=color.blue, tooltip='hi', text_font_family=font.family_default)",
         "expectedErrors": 0,
         "description": "Verify that table.cell accepts all 13 parameters without throwing 'Too many arguments'."
+    },
+    {
+        "name": "array.new_float no arguments",
+        "code": "//@version=6\nindicator('Test')\nlevels = array.new_float()",
+        "expectedErrors": 0,
+        "description": "Verify array.new_float accepts 0 arguments (defaults to size 0)."
+    },
+    {
+        "name": "Custom function with array param",
+        "code": "//@version=6\nindicator('Test')\nmaConfluence(float l, float[] m, float t) => 1\nx = maConfluence(1.0, array.new_float(1), 0.01)\n",
+        "expectedErrors": 0,
+        "description": "Verify custom function with array parameter is parsed correctly and argument counts match."
+    },
+    {
+        "name": "FindClosestKeyLevel signature",
+        "code": "//@version=6\nindicator('Test')\nfindClosestKeyLevel(float[] lvlArray, float targetPrice, bool isSup, float minDst) => 1\nkeyRes = findClosestKeyLevel(array.new_float(1), close, false, 1.0)\n",
+        "expectedErrors": 0,
+        "description": "Verify 4-argument custom function with array param."
     }
 ]
