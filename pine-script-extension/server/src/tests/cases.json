@@ -173,5 +173,11 @@
         "code": "//@version=6\ntype MyType\n    int x = 1\nobj = MyType.new()\n",
         "expectedErrors": 0,
         "description": "Verify UDT definitions and .new() constructor."
+    },
+    {
+        "name": "Qualified parameters count",
+        "code": "//@version=6\nindicator('Test')\ncalcReactions(series float srcLow, series float lvl, int len, float atrVal) => 1\nx = calcReactions(low, close, 50, 1.0)\n",
+        "expectedErrors": 0,
+        "description": "Verify that qualified parameters (series, etc.) are counted correctly as a single parameter."
     }
 ]

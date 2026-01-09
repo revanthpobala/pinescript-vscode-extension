@@ -15,12 +15,24 @@ module.exports = grammar({
     $._dedent
   ],
 
+  word: $ => $._identifier,
+
   conflicts: $ => [
     [$.conditional_expression, $._expression],
     [$.binary_expression, $.conditional_expression],
     [$.parameter_list, $._expression],
     [$.parameter, $._expression],
-    [$.history_reference, $._expression]
+    [$.parameter, $.argument],
+    [$.return_statement, $._expression],
+    [$.function_definition, $.function_call, $._expression],
+    [$.type, $.identifier],
+    [$.type, $._expression],
+    [$.simple_declaration, $.binary_expression],
+    [$.tuple_declaration, $._expression],
+    [$.history_reference, $._expression],
+    [$.if_expression, $.binary_expression],
+    [$.if_expression],
+    [$._statement, $._statement]
   ],
 
   rules: {
@@ -30,14 +42,20 @@ module.exports = grammar({
       $.version_directive,
       $.import_statement,
       $.variable_declaration,
+      $.simple_declaration,
       $.function_definition,
       $.method_definition,
       $.type_definition,
       $.assignment,
-      $.function_call,
+      $.compound_assignment,
       $.if_statement,
       $.for_statement,
-      $._newline
+      $.continue_statement,
+      $.break_statement,
+      $.return_statement,
+      $.expression_statement,
+      $._newline,
+      prec.left(1, seq($._statement, ',', $._statement)) // Support multiple statements on one line (commas)
     ),
 
     comment: $ => token(seq('//', /.*/)),
@@ -53,16 +71,33 @@ module.exports = grammar({
     library_path: $ => /[a-zA-Z0-9_]+\/[a-zA-Z0-9_]+\/\d+/,
 
     // Example: "var int x = 10" or "x = 10" or "[x, y] = request.security(...)"
-    variable_declaration: $ => seq(
-      optional(choice('var', 'varip')),
-      optional($.type),
+    // Example: "var int x = 10" or "int x = 10"
+    variable_declaration: $ => prec.dynamic(5, seq(
+      choice(
+        seq(choice('var', 'varip'), optional($.type)),
+        $.type
+      ),
       field('name', choice(
         $.identifier,
-        $.tuple_declaration
+        $.tuple_declaration,
+        $.member_access,
+        $.function_call
       )),
       '=',
       field('value', $._expression)
-    ),
+    )),
+
+    // Example: "x = 10"
+    simple_declaration: $ => prec(1, seq(
+      field('name', choice(
+        $.identifier,
+        $.tuple_declaration,
+        $.member_access,
+        $.function_call
+      )),
+      '=',
+      field('value', $._expression)
+    )),
 
     // Example: "myFunc(float x, y) => x + y"
     function_definition: $ => seq(
@@ -98,28 +133,47 @@ module.exports = grammar({
     ),
 
     parameter: $ => seq(
+      optional($.qualifier),
       optional($.type),
-      $.identifier
+      $.identifier,
+      optional(seq('=', $._expression))
+    ),
+
+    qualifier: $ => choice(
+      'series', 'simple', 'const', 'input'
     ),
 
     tuple_declaration: $ => seq(
       '[',
-      sep1($.identifier, ','),
+      seq(optional($.type), $.identifier),
+      repeat(seq(',', seq(optional($.type), $.identifier))),
       ']'
     ),
 
     assignment: $ => seq(
-      field('name', choice($.identifier, $.tuple_declaration)),
+      field('name', choice($.identifier, $.tuple_declaration, $.member_access, $.function_call)),
       ':=',
       field('value', $._expression)
     ),
 
-    function_call: $ => seq(
-      field('function', $.identifier),
+    compound_assignment: $ => seq(
+      field('name', $.identifier),
+      choice('+=', '-=', '*=', '/=', '%='),
+      field('value', $._expression)
+    ),
+
+    function_call: $ => prec(2, seq(
+      field('function', choice($.identifier, $.member_access)),
       '(',
       optional($.argument_list),
       ')'
-    ),
+    )),
+
+    member_access: $ => prec(5, seq(
+      field('object', $._expression),
+      '.',
+      field('member', $.identifier)
+    )),
 
     argument_list: $ => seq(
       $.argument,
@@ -128,7 +182,7 @@ module.exports = grammar({
 
     argument: $ => choice(
       $._expression,
-      seq(field('name', $.identifier), '=', field('value', $._expression))
+      prec(3, seq(field('name', $.identifier), '=', field('value', $._expression)))
     ),
 
     // Control Structures rely on Indent/Dedent from scanner.c
@@ -139,13 +193,37 @@ module.exports = grammar({
       $.block
     ),
 
-    for_statement: $ => seq(
-      'for',
-      field('variable', $.identifier),
-      'in',
-      $._expression,
-      $.block
+    for_statement: $ => choice(
+      // for i in array
+      seq(
+        'for',
+        field('variable', $.identifier),
+        'in',
+        $._expression,
+        $.block
+      ),
+      // for i = 0 to 10
+      seq(
+        'for',
+        field('variable', $.identifier),
+        '=',
+        field('start', $._expression),
+        'to',
+        field('end', $._expression),
+        optional(seq('by', field('step', $._expression))),
+        $.block
+      )
     ),
+
+    continue_statement: $ => 'continue',
+    break_statement: $ => 'break',
+
+    return_statement: $ => choice(
+      prec(2, seq('return', $._expression)),
+      prec(1, 'return')
+    ),
+
+    expression_statement: $ => prec(10, $._expression),
 
     block: $ => seq(
       $._indent,
@@ -158,12 +236,22 @@ module.exports = grammar({
       $.number,
       $.string,
       $.bool_literal,
-      $.function_call,
+      $.member_access,
+      $.tuple_expression,
+      prec(1, $.function_call),
       $.binary_expression,
       $.conditional_expression,
-      $.history_reference,
       $.unary_expression,
+      $.history_reference,
+      $.if_expression,
       seq('(', $._expression, ')')
+    ),
+
+    tuple_expression: $ => seq(
+      '[',
+      $._expression,
+      repeat(seq(',', $._expression)),
+      ']'
     ),
 
     bool_literal: $ => choice('true', 'false'),
@@ -188,6 +276,13 @@ module.exports = grammar({
       field('alternative', $._expression)
     )),
 
+    if_expression: $ => prec.right(1, seq(
+      'if',
+      field('condition', $._expression),
+      field('then', choice($._expression, $.block)),
+      optional(seq('else', field('else', choice($._expression, $.block))))
+    )),
+
     binary_expression: $ => choice(
       prec.left(2, seq($._expression, choice('*', '/', '%'), $._expression)),
       prec.left(1, seq($._expression, choice('+', '-'), $._expression)),
@@ -202,7 +297,12 @@ module.exports = grammar({
       optional('[]')
     ),
 
-    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_.]*/,
+    identifier: $ => choice(
+      choice('int', 'float', 'bool', 'string', 'color', 'label', 'line', 'table', 'box'),
+      $._identifier
+    ),
+
+    _identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
     number: $ => /\d+(\.\d+)?/,
 

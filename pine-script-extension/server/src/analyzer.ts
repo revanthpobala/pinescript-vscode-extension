@@ -76,6 +76,12 @@ export class Analyzer {
         'var', 'varip', 'type', 'method', 'export', 'import', 'library', 'true', 'false', 'na'
     ]);
 
+    private static readonly STANDARD_NAMESPACES = new Set([
+        'ta', 'math', 'request', 'array', 'matrix', 'table', 'line', 'label', 'box',
+        'linefill', 'polyline', 'str', 'time', 'color', 'runtime', 'syminfo', 'ticker',
+        'barstate', 'indicator', 'strategy', 'library', 'input'
+    ]);
+
     // Fundamental types, constants, and dual-use terms that are BOTH functions AND variables.
     // These should never be flagged as "using function as variable".
     private static readonly CORE_BUILTINS = new Set([
@@ -209,11 +215,12 @@ export class Analyzer {
                     const params: any[] = [];
                     const paramListNode = node.childForFieldName('parameters');
                     if (paramListNode) {
-                        const paramNodes = paramListNode.namedChildren;
-                        for (const p of paramNodes) {
-                            const pNameNode = p.type === 'identifier' ? p : p.namedChildren.find(c => c.type === 'identifier');
-                            if (pNameNode) {
-                                params.push({ name: pNameNode.text, type: 'any', required: true });
+                        for (const p of paramListNode.namedChildren) {
+                            if (p.type === 'parameter') {
+                                const pNameNode = p.childForFieldName('name') || p.namedChildren.find(c => c.type === 'identifier');
+                                if (pNameNode) {
+                                    params.push({ name: pNameNode.text, type: 'any', required: true });
+                                }
                             }
                         }
                     }
@@ -250,7 +257,7 @@ export class Analyzer {
             }
 
             // 2. Collect Variable Declarations (x = 1, x := 2, var x = 3)
-            if (node.type === 'variable_declaration' || node.type === 'assignment') {
+            if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
                 const nameNode = node.childForFieldName('name') || node.child(0);
                 if (nameNode && (nameNode.type === 'identifier' || nameNode.type === 'variable_declaration_left')) {
                     const name = nameNode.type === 'identifier' ? nameNode.text : nameNode.child(0)?.text;
@@ -310,6 +317,8 @@ export class Analyzer {
 
             if (node.type === 'function_call') {
                 this.handleFunctionCall(node, diagnostics);
+            } else if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
+                this.handleAssignment(node, diagnostics);
             } else if (node.type === 'identifier') {
                 // Skip identifiers that are part of a definition/assignment to avoid self-reporting
                 const parent = node.parent;
@@ -322,7 +331,7 @@ export class Analyzer {
                 } else {
                     this.handleIdentifier(node, diagnostics);
                 }
-            } else if (node.type === 'member_expression') {
+            } else if (node.type === 'member_access') {
                 this.handleIdentifier(node, diagnostics);
             }
 
@@ -334,6 +343,63 @@ export class Analyzer {
         }
 
         return diagnostics;
+    }
+
+    private isInsideError(node: SyntaxNode): boolean {
+        let n: SyntaxNode | null = node.parent;
+        while (n) {
+            if (n.type === 'ERROR') return true;
+            n = n.parent;
+        }
+        // Siblings: If a sibling is an error, the statement is broken
+        if (node.parent) {
+            for (const child of node.parent.children) {
+                if (child.type === 'ERROR') return true;
+            }
+        }
+        return false;
+    }
+
+    private handleAssignment(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        const nameNode = node.childForFieldName('name') || node.child(0);
+        if (!nameNode) return;
+
+        // 1. Check if assigning to a function call (invalid)
+        if (nameNode.type === 'function_call') {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: this.getRange(nameNode),
+                message: `Cannot assign a value to a function call '${nameNode.text}'.`,
+                source: 'Pine Script'
+            });
+            return;
+        }
+
+        // 2. Check if assigning to a built-in namespace or function
+        const name = nameNode.text;
+        if (this.definitions.has(name) || Analyzer.STANDARD_NAMESPACES.has(name)) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: this.getRange(nameNode),
+                message: `Cannot reassign built-in function or namespace '${name}'.`,
+                source: 'Pine Script'
+            });
+            return;
+        }
+
+        // 3. Check for member access assignment (usually invalid unless it's a UDT field which we don't fully support yet)
+        if (nameNode.type === 'member_access') {
+            // For now, most member accesses on built-ins are read-only
+            const parts = name.split('.');
+            if (Analyzer.STANDARD_NAMESPACES.has(parts[0])) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: this.getRange(nameNode),
+                    message: `Cannot assign to built-in property '${name}'.`,
+                    source: 'Pine Script'
+                });
+            }
+        }
     }
 
     private handleIdentifier(node: SyntaxNode, diagnostics: Diagnostic[]) {
@@ -354,9 +420,9 @@ export class Analyzer {
             return;
         }
 
-        // Special handling for member expressions (e.g., syminfo.prefix, session.ismarket)
+        // Special handling for member access (e.g., syminfo.prefix, session.ismarket)
         // If it starts with a known namespace variable/property block, ignore it as it's a variable access.
-        if (node.type === 'member_expression') {
+        if (node.type === 'member_access') {
             const objectName = name.split('.')[0];
             if (['syminfo', 'session', 'ticker', 'barstate', 'chart', 'indicator', 'strategy'].includes(objectName)) {
                 // These are almost always variable/property accesses when used as members
@@ -370,6 +436,32 @@ export class Analyzer {
         const isUserFunc = this.userFunctionTable.has(name);
 
         if (isBuiltIn || isUserFunc) {
+            // NO NOISE Safely: If the function name is immediately followed by '(',
+            // then it's clearly a call, even if the parser failed to group it.
+            let next: SyntaxNode | null = null;
+            if (node.parent) {
+                const children = node.parent.children;
+                const idx = children.indexOf(node);
+                if (idx !== -1 && idx < children.length - 1) {
+                    next = children[idx + 1];
+                }
+            }
+
+            while (next && (next.type === 'comment')) {
+                const children = node.parent!.children;
+                const idx = children.indexOf(next);
+                next = (idx !== -1 && idx < children.length - 1) ? children[idx + 1] : null;
+            }
+
+            if (next && next.text === '(') {
+                return;
+            }
+
+            // Suppress if inside or sibling to a structural error.
+            if (this.isInsideError(node)) {
+                return;
+            }
+
             const parent = node.parent;
             if (parent) {
                 // Ignore if it's the function being called
@@ -405,8 +497,8 @@ export class Analyzer {
                     return;
                 }
 
-                // New logic: If it's a member expression on a known variable namespace, ignore it
-                if (node.type === 'member_expression') {
+                // New logic: If it's a member access on a known variable namespace, ignore it
+                if (node.type === 'member_access') {
                     const objectName = name.split('.')[0];
                     if (['syminfo', 'session', 'ticker', 'barstate'].includes(objectName)) {
                         return;
@@ -438,10 +530,11 @@ export class Analyzer {
     }
 
     private handleFunctionCall(node: SyntaxNode, diagnostics: Diagnostic[]) {
-        const funcNameNode = node.childForFieldName('name') || node.child(0);
+        const funcNameNode = node.childForFieldName('function') || node.child(0);
         if (!funcNameNode) return;
 
         const funcName = funcNameNode.text;
+        const isMemberAccess = funcNameNode.type === 'member_access';
 
         // Skip if it's a keyword (e.g., mis-parsed 'if' statement)
         if (Analyzer.KEYWORDS.has(funcName)) {
@@ -450,10 +543,35 @@ export class Analyzer {
 
         // 1. Definition Lookup
         let definition = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
+        let isMethodCall = false;
+
+        if (!definition && isMemberAccess) {
+            const memberNode = funcNameNode.childForFieldName('member');
+            if (memberNode) {
+                const memberName = memberNode.text;
+                definition = this.definitions.get(memberName) || this.userFunctionTable.get(memberName);
+                if (definition) {
+                    isMethodCall = true;
+                }
+            }
+        }
 
         if (!definition) {
+            // Phase 15: Strict Built-in matching
+            if (isMemberAccess) {
+                const parts = funcName.split('.');
+                const prefix = parts[0];
+                if (Analyzer.STANDARD_NAMESPACES.has(prefix)) {
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Error,
+                        range: this.getRange(funcNameNode),
+                        message: `Undefined function '${funcName}' in standard library '${prefix}'.`
+                    });
+                    return;
+                }
+            }
+
             // FALLBACK: If it's not a known function, check if it's a known variable (Symbol).
-            // This supports lambdas (v6) and symbols recovered from ERROR zones.
             const sym = this.symbolTable.get(funcName);
             if (sym) {
                 if (sym.name === 'namespace') {
@@ -464,14 +582,10 @@ export class Analyzer {
                     });
                     return;
                 }
-                // It's a valid symbol and being called. In v6 this is often a lambda.
-                // We allow it to avoid false positives.
                 return;
             }
 
-            // Still not found? 
-            // NO NOISE POLICY: If the function name contains a dot, it's likely a library function 
-            // or a method call that we haven't resolved. Do not report as undefined.
+            // NO NOISE POLICY: If it contains a dot and we're not sure, don't report.
             if (funcName.includes('.')) {
                 return;
             }
@@ -544,7 +658,7 @@ export class Analyzer {
         const args = argListNode ? argListNode.namedChildren : [];
 
         // Count provided arguments
-        const providedCount = args.length;
+        const providedCount = isMethodCall ? args.length + 1 : args.length;
         const requiredParams = definition.params.filter((p: any) => p.required);
         const totalParams = definition.params.length;
 

@@ -56,13 +56,6 @@ If you find a bug or have a suggestion, please open an Issue on GitHub!
 
 ---
 
-## �🛠 Installation
-
-1. Download the latest `pine-script-pro-1.0.0.vsix` file.
-2. Open VS Code and press `Cmd+Shift+P` (or `Ctrl+Shift+P`).
-3. Type `Extensions: Install from VSIX...` and select the file.
-4. Restart VS Code or open a `.pine` file to activate.
-
 ## 📜 Requirements
 - **VS Code**: 1.75.0 or higher.
 - **Language**: Pine Script v6 (optimized), compatible with v3, v4, and v5.

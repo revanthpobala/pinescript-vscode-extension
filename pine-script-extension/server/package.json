@@ -1,7 +1,7 @@
 {
   "name": "pine-script-extension-server",
   "description": "Pine Script v6 Language Server",
-  "version": "1.1.2",
+  "version": "1.1.4",
   "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {

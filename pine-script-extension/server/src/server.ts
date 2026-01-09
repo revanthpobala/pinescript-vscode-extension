@@ -135,7 +135,7 @@ connection.onHover((params) => {
     if (node) {
         let word = node.text;
 
-        if (node.parent?.type === 'member_expression') {
+        if (node.parent?.type === 'member_access') {
             word = node.parent.text;
         }
 
@@ -460,7 +460,7 @@ connection.languages.semanticTokens.on((params) => {
         const node = stack.pop();
         if (!node) continue;
 
-        if (node.type === 'identifier' || node.type === 'member_expression') {
+        if (node.type === 'identifier' || node.type === 'member_access') {
             const name = node.text;
             let typeIdx = -1;
             let modIdx = 0;
