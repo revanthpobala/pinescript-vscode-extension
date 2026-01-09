@@ -360,6 +360,92 @@ export class Analyzer {
         return false;
     }
 
+    private getType(node: SyntaxNode): string {
+        if (!node) return 'any';
+
+        switch (node.type) {
+            case 'integer':
+                return 'int';
+            case 'float':
+                return 'float';
+            case 'string':
+                return 'string';
+            case 'bool':
+            case 'true':
+            case 'false':
+                return 'bool';
+            case 'color':
+                return 'color';
+            case 'identifier':
+            case 'member_access':
+                const name = node.text;
+                // Check if it's a built-in variable (e.g., 'close')
+                if (Analyzer.CORE_BUILTINS.has(name)) {
+                    if (['open', 'high', 'low', 'close', 'volume', 'hl2', 'hlc3', 'ohlc4', 'hlcc4', 'time'].includes(name)) {
+                        return 'float'; // Most price data is float series
+                    }
+                    if (name === 'bar_index' || name === 'last_bar_index') return 'int';
+                    if (name.startsWith('barstate.')) return 'bool';
+                    if (name === 'true' || name === 'false') return 'bool';
+                    if (name === 'na') return 'any'; // or float/int depending on context, na is compatible with all
+                }
+                // Check symbol table
+                const symbol = this.symbolTable.get(name);
+                if (symbol) return symbol.name;
+                return 'any';
+
+            case 'function_call':
+                const funcNameNode = node.childForFieldName('name') || node.child(0);
+                if (funcNameNode) {
+                    const funcName = funcNameNode.text;
+                    const def = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
+                    if (def) return def.returnType;
+                    if (Analyzer.VOID_FUNCTIONS.has(funcName)) return 'void';
+                }
+                return 'any';
+
+            case 'binary_expression':
+                const left = node.child(0);
+                const op = node.child(1);
+                const right = node.child(2);
+                if (left && right && op) {
+                    const leftType = this.getType(left);
+                    const rightType = this.getType(right);
+                    // Pine Coercion: if either is float, result is float
+                    if (leftType === 'float' || rightType === 'float') return 'float';
+                    if (leftType === 'int' && rightType === 'int') return 'int';
+                    if (['==', '!=', '>', '<', '>=', '<=', 'and', 'or'].includes(op.text)) return 'bool';
+                }
+                return 'any';
+
+            case 'conditional_expression': // ternary
+                const thenBranch = node.child(2);
+                const elseBranch = node.child(4);
+                if (thenBranch && elseBranch) {
+                    const thenType = this.getType(thenBranch);
+                    const elseType = this.getType(elseBranch);
+                    if (thenType === elseType) return thenType;
+                    if ((thenType === 'float' && elseType === 'int') || (thenType === 'int' && elseType === 'float')) return 'float';
+                }
+                return 'any';
+
+            case 'parenthesized_expression':
+                const inner = node.child(1);
+                return inner ? this.getType(inner) : 'any';
+
+            default:
+                return 'any';
+        }
+    }
+
+    private isCompatible(target: string, actual: string): boolean {
+        if (target === 'any' || actual === 'any') return true;
+        if (target === actual) return true;
+        // int is compatible with float (upcast)
+        if (target === 'float' && actual === 'int') return true;
+        return false;
+    }
+
     private handleAssignment(node: SyntaxNode, diagnostics: Diagnostic[]) {
         const nameNode = node.childForFieldName('name') || node.child(0);
         if (!nameNode) return;
@@ -398,6 +484,27 @@ export class Analyzer {
                     message: `Cannot assign to built-in property '${name}'.`,
                     source: 'Pine Script'
                 });
+            }
+        }
+
+        // 4. Type Compatibility Check
+        const rhs = node.childForFieldName('value') || node.child(node.children.length - 1);
+        if (rhs && nameNode.type === 'identifier') {
+            const lhsType = this.symbolTable.get(nameNode.text)?.name || 'any';
+            const rhsType = this.getType(rhs);
+
+            if (lhsType !== 'any' && !this.isCompatible(lhsType, rhsType)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: this.getRange(rhs),
+                    message: `Type mismatch: cannot assign value of type '${rhsType}' to variable of type '${lhsType}'.`,
+                    source: 'Pine Script'
+                });
+            }
+
+            // Update symbol table with inferred type if it was 'any'
+            if (lhsType === 'any' && rhsType !== 'any') {
+                this.symbolTable.set(nameNode.text, { name: rhsType, qualifier: Qualifier.Simple });
             }
         }
     }
@@ -679,6 +786,25 @@ export class Analyzer {
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(funcNameNode),
                 message: `Missing required arguments for '${funcName}()'. Expected ${requiredParams.length}, found ${providedCount}.`
+            });
+        }
+
+        // 3. Type Validation for Arguments
+        if (totalParams > 0) {
+            args.forEach((argNode, index) => {
+                const paramIndex = isMethodCall ? index + 1 : index;
+                if (paramIndex < totalParams) {
+                    const paramDef = definition.params[paramIndex];
+                    const argType = this.getType(argNode);
+                    if (!this.isCompatible(paramDef.type, argType)) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Error,
+                            range: this.getRange(argNode),
+                            message: `Type mismatch for argument '${paramDef.name}': expected '${paramDef.type}', found '${argType}'.`,
+                            source: 'Pine Script'
+                        });
+                    }
+                }
             });
         }
     }
