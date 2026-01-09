@@ -44,11 +44,34 @@ for (const group of raw.functions) {
             params: doc.args ? doc.args.map(a => ({
                 name: a.name,
                 desc: a.desc || '',
-                type: a.type || 'any',
+                type: a.displayType || a.type || 'any',
                 optional: a.required === false || !!a.default
             })) : convertParams(doc.syntax),
-            returnType: doc.returns || 'any'
+            returnType: doc.returnedType || doc.returns || 'any'
         });
+    }
+}
+
+// 1.5 Process Methods
+if (raw.methods) {
+    for (const group of raw.methods) {
+        for (const doc of group.docs) {
+            if (seen.has(doc.name)) continue;
+            seen.add(doc.name);
+
+            const description = doc.desc || doc.description || '';
+            newFunctions.push({
+                name: doc.name,
+                description: Array.isArray(description) ? description.join('\n') : description,
+                params: doc.args ? doc.args.map(a => ({
+                    name: a.name,
+                    desc: a.desc || '',
+                    type: a.displayType || a.type || 'any',
+                    optional: a.required === false || !!a.default
+                })) : convertParams(doc.syntax),
+                returnType: doc.returnedType || doc.returns || 'any'
+            });
+        }
     }
 }
 

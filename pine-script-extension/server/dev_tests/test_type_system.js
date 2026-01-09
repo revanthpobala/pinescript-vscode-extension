@@ -31,10 +31,10 @@ async function testTypeSystem() {
     for (const test of scripts) {
         console.log(`\nTest: ${test.name}`);
         const tree = parser.parse(test.code);
-        const diagnostics = [];
-        analyzer.analyze(tree.rootNode, diagnostics);
+        const diagnostics = analyzer.analyze(tree.rootNode);
+        console.log(`  Diagnostics found: ${diagnostics.length}`);
         diagnostics.forEach(d => {
-            console.log(`[${d.severity === 1 ? 'ERROR' : 'WARNING'}] ${d.message}`);
+            console.log(`  [${d.severity === 1 ? 'ERROR' : 'ERROR'}] ${d.message}`);
         });
     }
 }

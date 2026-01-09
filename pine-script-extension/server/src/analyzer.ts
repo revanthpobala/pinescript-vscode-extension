@@ -19,7 +19,7 @@ interface FunctionDefinition {
     name: string;
     description: string;
     returnType: string;
-    params: { name: string; type: string; required: boolean }[];
+    params: { name: string; type: string; required: boolean, desc?: string }[];
 }
 
 export class Analyzer {
@@ -256,14 +256,23 @@ export class Analyzer {
                 }
             }
 
-            // 2. Collect Variable Declarations (x = 1, x := 2, var x = 3)
+            // 2. Collect Variable Declarations (x = 1, x := 2, var int x = 3)
             if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
                 const nameNode = node.childForFieldName('name') || node.child(0);
-                if (nameNode && (nameNode.type === 'identifier' || nameNode.type === 'variable_declaration_left')) {
-                    const name = nameNode.type === 'identifier' ? nameNode.text : nameNode.child(0)?.text;
-                    if (name) {
-                        this.symbolTable.set(name, { name: 'any', qualifier: Qualifier.Simple });
-                    }
+                const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
+                const typeName = explicitTypeNode?.text || 'any';
+
+                if (nameNode) {
+                    const collectFromTarget = (target: SyntaxNode) => {
+                        if (target.type === 'identifier') {
+                            this.symbolTable.set(target.text, { name: typeName, qualifier: Qualifier.Simple });
+                        } else if (target.type === 'tuple_declaration' || target.type === 'tuple_expression') {
+                            for (const child of target.namedChildren) {
+                                collectFromTarget(child);
+                            }
+                        }
+                    };
+                    collectFromTarget(nameNode);
                 }
             }
 
@@ -364,10 +373,8 @@ export class Analyzer {
         if (!node) return 'any';
 
         switch (node.type) {
-            case 'integer':
-                return 'int';
-            case 'float':
-                return 'float';
+            case 'number':
+                return node.text.includes('.') ? 'float' : 'int';
             case 'string':
                 return 'string';
             case 'bool':
@@ -393,6 +400,9 @@ export class Analyzer {
                 const symbol = this.symbolTable.get(name);
                 if (symbol) return symbol.name;
                 return 'any';
+
+            case 'argument':
+                return this.getType(node.namedChildren[0]);
 
             case 'function_call':
                 const funcNameNode = node.childForFieldName('name') || node.child(0);
@@ -439,10 +449,21 @@ export class Analyzer {
     }
 
     private isCompatible(target: string, actual: string): boolean {
+        if (!target || !actual) return true;
         if (target === 'any' || actual === 'any') return true;
-        if (target === actual) return true;
-        // int is compatible with float (upcast)
-        if (target === 'float' && actual === 'int') return true;
+
+        // Handle OR types (e.g., "int|float")
+        const targets = target.split('|').map(t => t.trim().toLowerCase());
+
+        for (const t of targets) {
+            // Check for simple match (ignore series/const/input prefixes for now as we don't track them perfectly)
+            if (t === actual.toLowerCase()) return true;
+            if (t.includes(actual.toLowerCase())) return true;
+
+            // Pine upcasts
+            if (t.includes('float') && actual === 'int') return true;
+        }
+
         return false;
     }
 
@@ -807,6 +828,82 @@ export class Analyzer {
                 }
             });
         }
+    }
+
+    public onSignatureHelp(rootNode: SyntaxNode, position: { line: number, character: number }): any {
+        // 1. Find the node at position
+        let node = this.findNodeAt(rootNode, position);
+        if (!node) return null;
+
+        // 2. Traverse up to find function_call
+        let callNode: SyntaxNode | null = node;
+        while (callNode && callNode.type !== 'function_call') {
+            callNode = callNode.parent;
+        }
+
+        if (!callNode) return null;
+
+        // 3. Get function name and definition
+        const funcNameNode = callNode.childForFieldName('name') || callNode.child(0);
+        if (!funcNameNode) return null;
+        const funcName = funcNameNode.text;
+        const def = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
+        if (!def) return null;
+
+        // 4. Calculate active parameter index
+        const argListNode = callNode.namedChildren.find(c => c.type === 'argument_list');
+        let activeParameter = 0;
+        if (argListNode) {
+            for (let i = 0; i < argListNode.namedChildren.length; i++) {
+                const arg = argListNode.namedChildren[i];
+                if (position.line > arg.endPosition.row || (position.line === arg.endPosition.row && position.character >= arg.endPosition.column)) {
+                    activeParameter = i + 1;
+                }
+            }
+        }
+
+        return {
+            signatures: [{
+                label: `${funcName}(${def.params.map(p => `${p.name}: ${p.type}`).join(', ')})`,
+                documentation: def.description,
+                parameters: def.params.map(p => ({
+                    label: p.name,
+                    documentation: p.desc || ''
+                }))
+            }],
+            activeSignature: 0,
+            activeParameter: Math.min(activeParameter, def.params.length - 1)
+        };
+    }
+
+    private findNodeAt(node: SyntaxNode, position: { line: number, character: number }): SyntaxNode | null {
+        if (position.line < node.startPosition.row || position.line > node.endPosition.row) return null;
+        if (position.line === node.startPosition.row && position.character < node.startPosition.column) return null;
+        if (position.line === node.endPosition.row && position.character > node.endPosition.column) return null;
+
+        for (const child of node.children) {
+            const result = this.findNodeAt(child, position);
+            if (result) return result;
+        }
+        return node;
+    }
+
+    public onRenameRequest(rootNode: SyntaxNode, position: { line: number, character: number }, newName: string): { range: Range, newText: string }[] {
+        const node = this.findNodeAt(rootNode, position);
+        if (!node || node.type !== 'identifier') return [];
+
+        const oldName = node.text;
+        const edits: { range: Range, newText: string }[] = [];
+
+        // Simple same-file rename for all occurrences of this identifier
+        const visit = (n: SyntaxNode) => {
+            if (n.type === 'identifier' && n.text === oldName) {
+                edits.push({ range: this.getRange(n), newText: newName });
+            }
+            for (const child of n.children) visit(child);
+        };
+        visit(rootNode);
+        return edits;
     }
 
     private getRange(node: SyntaxNode): Range {
