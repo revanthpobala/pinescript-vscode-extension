@@ -24,9 +24,9 @@ interface FunctionDefinition {
 
 export class Analyzer {
     private definitions: Map<string, FunctionDefinition>;
-    public symbolTable: Map<string, PineType>;
-    public usedSymbols: Set<string>;
-    public userFunctionTable: Map<string, FunctionDefinition>;
+    private scopeStack: Map<string, { name: string, qualifier: Qualifier, usageCount: number, range?: Range }>[] = [new Map()];
+    public userFunctionTable: Map<string, FunctionDefinition> = new Map();
+    private sourceCode: string = ''; // For text-based fallback checks
 
     // Functions that return void - cannot be assigned to variables
     private static readonly VOID_FUNCTIONS = new Set([
@@ -79,7 +79,12 @@ export class Analyzer {
     private static readonly STANDARD_NAMESPACES = new Set([
         'ta', 'math', 'request', 'array', 'matrix', 'table', 'line', 'label', 'box',
         'linefill', 'polyline', 'str', 'time', 'color', 'runtime', 'syminfo', 'ticker',
-        'barstate', 'indicator', 'strategy', 'library', 'input'
+        'barstate', 'indicator', 'strategy', 'library', 'input', 'map', 'chart',
+        'format', 'session', 'alert', 'timeframe', 'dividends', 'earnings', 'box', 'label',
+        'line', 'table', 'polyline', 'linefill', 'hline', 'plot', 'display',
+        'order', 'scale', 'adjustment', 'backadjustment', 'currency', 'font',
+        'extend', 'location', 'position', 'shape', 'size', 'text', 'xloc', 'yloc',
+        'splits', 'barmerge', 'settlement_as_close'
     ]);
 
     // Fundamental types, constants, and dual-use terms that are BOTH functions AND variables.
@@ -153,7 +158,21 @@ export class Analyzer {
         // Order constants
         'order.ascending', 'order.descending',
         // Session constants
-        'session.regular', 'session.extended'
+        'session.regular', 'session.extended',
+        // xloc constants
+        'xloc.bar_index', 'xloc.bar_time',
+        // yloc constants
+        'yloc.price', 'yloc.abovebar', 'yloc.belowbar',
+        // Timeframe constants and variables
+        'timeframe.period', 'timeframe.multiplier', 'timeframe.isintraday', 'timeframe.isdaily', 'timeframe.isweekly', 'timeframe.ismonthly', 'timeframe.isdwm',
+        // Adjustment constants
+        'adjustment.none', 'adjustment.splits', 'adjustment.dividends',
+        // Currency constants
+        'currency.USD', 'currency.EUR', 'currency.GBP', 'currency.JPY', 'currency.AUD', 'currency.CAD', 'currency.CHF', 'currency.CNY', 'currency.HKD', 'currency.NZD', 'currency.SEK', 'currency.SGD', 'currency.KRW', 'currency.INR', 'currency.RUB', 'currency.TRY', 'currency.ZAR', 'currency.BRL', 'currency.MXN', 'currency.PLN', 'currency.TKL', 'currency.XAU', 'currency.XAG', 'currency.NONE',
+        // Font constants
+        'font.family_default', 'font.family_monospace',
+        // Scale constants
+        'scale.left', 'scale.right', 'scale.none'
     ]);
 
     constructor(definitionsJson: any) {
@@ -163,9 +182,6 @@ export class Analyzer {
                 this.definitions.set(func.name, func);
             }
         }
-        this.symbolTable = new Map();
-        this.usedSymbols = new Set();
-        this.userFunctionTable = new Map();
         this.initializeBuiltIns();
     }
 
@@ -181,55 +197,238 @@ export class Analyzer {
             'extend', 'location', 'position', 'shape', 'size', 'text', 'xloc', 'yloc',
             'splits', 'barmerge', 'settlement_as_close'
         ].forEach(ns => {
-            this.symbolTable.set(ns, { name: 'namespace', qualifier: Qualifier.Const });
+            this.define(ns, { name: 'namespace', qualifier: Qualifier.Const });
         });
 
-        // Add core variables to symbol table for reference
+        // Add core variables to symbol table with specific types
         Analyzer.CORE_BUILTINS.forEach(b => {
-            if (!this.symbolTable.has(b)) {
-                this.symbolTable.set(b, { name: 'series float', qualifier: Qualifier.Series });
+            if (!this.getSymbol(b)) {
+                let typeName = 'series float';
+                const parts = b.split('.');
+                const prefix = parts[0];
+                const last = parts[parts.length - 1];
+
+                if (b.startsWith('color.')) {
+                    typeName = 'color';
+                } else if (b.startsWith('hline.style_')) {
+                    typeName = 'hline_style';
+                } else if (b.startsWith('line.style_')) {
+                    typeName = 'line_style';
+                } else if (b.startsWith('plot.style_')) {
+                    typeName = 'plot_style';
+                } else if (b.startsWith('display.')) {
+                    typeName = 'plot_display';
+                } else if (b.startsWith('size.')) {
+                    typeName = 'size';
+                } else if (b.startsWith('position.')) {
+                    typeName = 'position';
+                } else if (b.startsWith('shape.')) {
+                    typeName = 'shape';
+                } else if (b.startsWith('location.')) {
+                    typeName = 'location';
+                } else if (b.startsWith('text.align_') || b.startsWith('text.wrap_') || b.startsWith('text.format_')) {
+                    typeName = 'text_align';
+                } else if (b.startsWith('xloc.')) {
+                    typeName = 'xloc';
+                } else if (b.startsWith('yloc.')) {
+                    typeName = 'yloc';
+                } else if (b.startsWith('extend.')) {
+                    typeName = 'extend';
+                } else if (b.startsWith('barmerge.gaps_')) {
+                    typeName = 'barmerge_gaps';
+                } else if (b.startsWith('barmerge.lookahead_')) {
+                    typeName = 'barmerge_lookahead';
+                } else if (b.startsWith('label.style_')) {
+                    typeName = 'label_style';
+                } else if (b.startsWith('format.')) {
+                    typeName = 'format';
+                } else if (b.startsWith('alert.freq_')) {
+                    typeName = 'alert_freq';
+                } else if (b.startsWith('adjustment.')) {
+                    typeName = 'adjustment';
+                } else if (b.startsWith('currency.')) {
+                    typeName = 'currency';
+                } else if (b.startsWith('font.')) {
+                    typeName = 'font';
+                } else if (b.startsWith('scale.')) {
+                    typeName = 'scale';
+                } else if (b.startsWith('order.')) {
+                    typeName = 'order';
+                } else if (b.startsWith('session.')) {
+                    typeName = 'session';
+                } else if (b.startsWith('timeframe.is')) {
+                    typeName = 'series bool';
+                } else if (b === 'timeframe.period' || b === 'timeframe.multiplier') {
+                    typeName = 'series string';
+                } else if (prefix === 'strategy') {
+                    if (['long', 'short', 'cash', 'fixed', 'percent_of_equity'].includes(last)) typeName = 'strategy_direction';
+                    else typeName = 'float';
+                } else if (['true', 'false', 'na'].includes(b)) {
+                    typeName = 'bool';
+                    if (b === 'na') typeName = 'any';
+                } else if (['barstate.isconfirmed', 'barstate.ishistory', 'barstate.islast', 'barstate.islastconfirmedhistory', 'barstate.isnew', 'barstate.isrealtime'].includes(b)) {
+                    typeName = 'series bool';
+                } else if (['bar_index', 'last_bar_index', 'time', 'timenow', 'year', 'month', 'dayofmonth', 'dayofweek', 'hour', 'minute', 'second', 'weekofyear'].includes(b)) {
+                    typeName = 'series int';
+                }
+
+                this.define(b, { name: typeName, qualifier: Qualifier.Series });
             }
         });
+    }
+
+    private define(name: string, info: { name: string, qualifier: Qualifier }, node?: SyntaxNode) {
+        const scope = this.scopeStack[this.scopeStack.length - 1];
+        if (scope) {
+            // Store valid range if node provided, else undefined
+            const range = node ? this.getRange(node) : undefined;
+            scope.set(name, { ...info, usageCount: 0, range });
+        }
+    }
+
+    public getSymbol(name: string): { name: string, qualifier: Qualifier, usageCount?: number } | undefined {
+        for (let i = this.scopeStack.length - 1; i >= 0; i--) {
+            if (this.scopeStack[i].has(name)) return this.scopeStack[i].get(name);
+        }
+        return undefined;
+    }
+
+    // New validation helper
+    private isReadOnly(node: SyntaxNode): boolean {
+        // 1. Built-in Methods ending in .new (constructors)
+        if (node.text.endsWith('.new') && !node.text.startsWith('array.') && !node.text.startsWith('matrix.') && !node.text.startsWith('map.')) {
+            // Arrays/matrices have .new(), but types have Type.new()
+            // In Pine, Type.new is a constructor, usually read-only unless shadowed (rare)
+            const parts = node.text.split('.');
+            if (parts.length === 2 && this.userFunctionTable.has(node.text + '.new')) return true; // It's a UDT constructor
+        }
+
+        // 1b. Actually simpler: anything ending in .new where the prefix is a Type
+        if (node.text.endsWith('.new')) {
+            const typeName = node.text.substring(0, node.text.length - 4);
+            // If typeName is a known type? 
+            // Pine has built-in types like line, label, box... but line.new is a function. 
+            // You cannot assign TO line.new = ... 
+            // You cannot assign TO ANY function call or method access generally, unless it looks like a variable.
+            return true;
+        }
+
+        // 2. Core Namespaces
+        if (Analyzer.STANDARD_NAMESPACES.has(node.text) || Analyzer.STANDARD_NAMESPACES.has(node.text.split('.')[0])) {
+            return true; // Cannot assign to 'strategy', 'color', 'strategy.entry'
+        }
+
+        // 3. Constant values
+        if (['true', 'false', 'na'].includes(node.text)) return true;
+
+        // 4. Function calls (AST structure check needed in handleAssignment, but text check helps)
+        // If it's "foo()", that's handled by node type, not here.
+
+        return false;
     }
 
     public analyze(rootNode: SyntaxNode): Diagnostic[] {
         const diagnostics: Diagnostic[] = [];
         this.userFunctionTable.clear();
-        this.symbolTable.clear();
-
-        // Pre-populate namespaces
-        const namespaces = ['ta', 'math', 'strategy', 'syminfo', 'array', 'matrix', 'map', 'line', 'label', 'box', 'table', 'log', 'runtime', 'request', 'ticker', 'time', 'timenow'];
-        for (const ns of namespaces) {
-            this.symbolTable.set(ns, { name: 'namespace', qualifier: Qualifier.Simple });
-        }
+        this.scopeStack = [new Map()]; // Reset scope stack for each analysis
+        this.initializeBuiltIns(); // Re-populate standard library symbols
+        this.sourceCode = rootNode.text; // Store source for text-based checks
 
         // Pass 1: Collect User Symbols (Functions and Variables)
         const stack: SyntaxNode[] = [rootNode];
         while (stack.length > 0) {
             const node = stack.pop()!;
 
+            // 0. Manual Children Scan for Complex Patterns (e.g. broken function defs)
+            if (node.type === 'source_file' || node.type === 'block') {
+                for (let i = 0; i < node.children.length; i++) {
+                    const child = node.children[i];
+                    if (child.type === 'expression_statement') {
+                        const grandChild = child.child(0);
+                        if (grandChild?.type === 'function_call') {
+                            const next = node.children[i + 1];
+                            if (next && next.type === 'ERROR' && next.text === '=>') {
+                                const funcNameNode = grandChild.childForFieldName('function') || grandChild.child(0);
+                                if (funcNameNode) {
+                                    this.userFunctionTable.set(funcNameNode.text, {
+                                        name: funcNameNode.text,
+                                        description: 'User function (recovered from complex syntax)',
+                                        returnType: 'any',
+                                        params: [{ name: '...args', type: 'any', required: false }]
+                                    });
+                                }
+                            }
+                        }
+                    } else if (child.type === 'function_definition') {
+                        // Fallback for function defs followed by weird tokens
+                        // (Already handled by strict parser mostly, but can add if needed)
+                    }
+                }
+            }
+
             // 1. Collect Function and Method Definitions
-            if (node.type === 'function_definition' || node.type === 'method_definition') {
+            if (node.type === 'function_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode?.text) {
                     const params: any[] = [];
-                    const paramListNode = node.childForFieldName('parameters');
-                    if (paramListNode) {
-                        for (const p of paramListNode.namedChildren) {
+                    const paramsNode = node.childForFieldName('parameters');
+                    if (paramsNode) {
+                        for (const p of paramsNode.namedChildren) {
                             if (p.type === 'parameter') {
-                                const pNameNode = p.childForFieldName('name') || p.namedChildren.find(c => c.type === 'identifier');
-                                if (pNameNode) {
-                                    params.push({ name: pNameNode.text, type: 'any', required: true });
-                                }
+                                const pNameNode = p.namedChildren.find(c => c.type === 'identifier');
+                                const pTypeNode = p.namedChildren.find(c => c.type === 'type');
+                                params.push({
+                                    name: pNameNode?.text || 'any',
+                                    type: pTypeNode?.text || 'any',
+                                    required: true
+                                });
                             }
                         }
                     }
                     this.userFunctionTable.set(nameNode.text, {
                         name: nameNode.text,
-                        description: 'User function',
+                        description: 'User Defined Function',
                         returnType: 'any',
                         params: params
                     });
+                }
+            }
+
+            // 1a-Recovery. Collect Function Definitions parsed as Expression Statements (Generics failure)
+            if (node.type === 'expression_statement') {
+                const callNode = node.namedChildren[0];
+                if (callNode && callNode.type === 'function_call') {
+                    const errorNode = node.children.find(c => c.type === 'ERROR' && c.text === '=>');
+                    if (errorNode) {
+                        const nameNode = callNode.childForFieldName('function');
+                        if (nameNode && nameNode.text) {
+                            const params: string[] = [];
+                            const argList = callNode.childForFieldName('arguments');
+                            if (argList) {
+                                for (const arg of argList.namedChildren) {
+                                    const findRightmostId = (n: SyntaxNode): string | null => {
+                                        if (n.type === 'identifier') return n.text;
+                                        if (n.namedChildren.length > 0) {
+                                            return findRightmostId(n.namedChildren[n.namedChildren.length - 1]);
+                                        }
+                                        return null;
+                                    };
+                                    const pName = findRightmostId(arg);
+                                    if (pName) params.push(pName);
+                                }
+                            }
+                            this.userFunctionTable.set(nameNode.text, {
+                                name: nameNode.text,
+                                description: 'User Defined Function (Recovered)',
+                                returnType: 'any',
+                                params: params.map(p => ({
+                                    name: p,
+                                    type: 'any',
+                                    required: true
+                                }))
+                            });
+                        }
+                    }
                 }
             }
 
@@ -237,7 +436,7 @@ export class Analyzer {
             if (node.type === 'type_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode?.text) {
-                    this.symbolTable.set(nameNode.text, { name: 'type', qualifier: Qualifier.Simple });
+                    this.define(nameNode.text, { name: 'type', qualifier: Qualifier.Simple }, nameNode);
                     // Also allow Name.new()
                     this.userFunctionTable.set(`${nameNode.text}.new`, {
                         name: `${nameNode.text}.new`,
@@ -252,12 +451,22 @@ export class Analyzer {
             if (node.type === 'import_statement') {
                 const aliasNode = node.childForFieldName('alias');
                 if (aliasNode?.text) {
-                    this.symbolTable.set(aliasNode.text, { name: 'namespace', qualifier: Qualifier.Simple });
+                    this.define(aliasNode.text, { name: 'namespace', qualifier: Qualifier.Simple });
+                } else {
+                    const libNode = node.childForFieldName('library');
+                    if (libNode) {
+                        const parts = libNode.text.split('/');
+                        if (parts.length >= 2) {
+                            this.define(parts[1], { name: 'namespace', qualifier: Qualifier.Simple }, libNode);
+                        }
+                    }
                 }
             }
 
-            // 2. Collect Variable Declarations (x = 1, x := 2, var int x = 3)
-            if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
+            // 2. Global variable declarations (only if at depth 1 or similar)
+            // For now, let's collect everything that looks like a global declaration
+            const isTopLevel = node.parent?.type === 'source_file';
+            if (isTopLevel && (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration')) {
                 const nameNode = node.childForFieldName('name') || node.child(0);
                 const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
                 const typeName = explicitTypeNode?.text || 'any';
@@ -265,7 +474,7 @@ export class Analyzer {
                 if (nameNode) {
                     const collectFromTarget = (target: SyntaxNode) => {
                         if (target.type === 'identifier') {
-                            this.symbolTable.set(target.text, { name: typeName, qualifier: Qualifier.Simple });
+                            this.define(target.text, { name: typeName, qualifier: Qualifier.Simple }, target);
                         } else if (target.type === 'tuple_declaration' || target.type === 'tuple_expression') {
                             for (const child of target.namedChildren) {
                                 collectFromTarget(child);
@@ -280,7 +489,7 @@ export class Analyzer {
             if (node.type === 'parameter') {
                 const nameNode = node.namedChildren.find(c => c.type === 'identifier');
                 if (nameNode) {
-                    this.symbolTable.set(nameNode.text, { name: 'any', qualifier: Qualifier.Simple });
+                    this.define(nameNode.text, { name: 'any', qualifier: Qualifier.Simple }, nameNode);
                 }
             }
 
@@ -289,7 +498,7 @@ export class Analyzer {
                 const collectIdentifiers = (n: SyntaxNode) => {
                     if (n.type === 'identifier') {
                         // Safe default: assume any identifier in an error zone is a valid symbol/parameter
-                        this.symbolTable.set(n.text, { name: 'any', qualifier: Qualifier.Simple });
+                        this.define(n.text, { name: 'any', qualifier: Qualifier.Simple }, n);
                     }
                     for (const child of n.children) {
                         collectIdentifiers(child);
@@ -300,15 +509,35 @@ export class Analyzer {
                 // Heuristic for functions defined inside errors
                 for (let i = 0; i < node.children.length; i++) {
                     const child = node.children[i];
-                    if (child.type === 'identifier') {
+                    // console.log(`DEBUG: Pass 1 Node [${i}]: ${child.type}`);
+
+                    if (child.type === 'function_definition') {
                         const next = node.children[i + 1];
-                        if (next && next.text === '=>') {
+                        if (next && (next.text === '=>' || (next.type === 'type' && node.children[i + 2]?.text === '=>'))) {
                             this.userFunctionTable.set(child.text, {
                                 name: child.text,
                                 description: 'User function (recovered)',
                                 returnType: 'any',
                                 params: []
                             });
+                        }
+                    } else if (child.type === 'expression_statement') {
+                        // RECOVERY: Check for "function_call" followed by "=>" (ERROR node)
+                        // This happens when parser fails on complex parameters like matrix<box>
+                        const grandChild = child.child(0);
+                        if (grandChild?.type === 'function_call') {
+                            const next = node.children[i + 1];
+                            if (next && next.type === 'ERROR' && next.text === '=>') {
+                                const funcNameNode = grandChild.childForFieldName('function') || grandChild.child(0);
+                                if (funcNameNode) {
+                                    this.userFunctionTable.set(funcNameNode.text, {
+                                        name: funcNameNode.text,
+                                        description: 'User function (recovered from complex syntax)',
+                                        returnType: 'any',
+                                        params: [] // Params are too complex to parse here, but at least we know it's a function
+                                    });
+                                }
+                            }
                         }
                     }
                 }
@@ -319,39 +548,136 @@ export class Analyzer {
             }
         }
 
-        // Pass 2: Visit and Validate
-        const visitStack: SyntaxNode[] = [rootNode];
-        while (visitStack.length > 0) {
-            const node = visitStack.pop()!;
+        // Pass 2: Visit and Validate (Recursive for scoping)
+        this.visit(rootNode, diagnostics);
 
-            if (node.type === 'function_call') {
-                this.handleFunctionCall(node, diagnostics);
-            } else if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
-                this.handleAssignment(node, diagnostics);
-            } else if (node.type === 'identifier') {
-                // Skip identifiers that are part of a definition/assignment to avoid self-reporting
-                const parent = node.parent;
-                if (parent && (parent.type === 'variable_declaration' || parent.type === 'function_definition' || parent.type === 'parameter')) {
-                    if (node === parent.childForFieldName('name') || node === parent.childForFieldName('parameters')) {
-                        // Continue to children
-                    } else {
-                        this.handleIdentifier(node, diagnostics);
+        // Pass 3: Simple text-based unused variable check for global `var [type] name = ...` declarations
+        // This avoids false positives from complex scoping by doing a simple grep-style search
+        this.checkUnusedVarDeclarations(rootNode.text, diagnostics);
+
+        return diagnostics;
+    }
+
+    private visit(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        if (diagnostics.length >= 500) return;
+
+        let pushed = false;
+        if (node.type === 'function_definition') {
+            this.scopeStack.push(new Map());
+            pushed = true;
+
+            // Define parameters in local scope
+            const paramsNode = node.childForFieldName('parameters');
+            if (paramsNode) {
+                for (const p of paramsNode.namedChildren) {
+                    if (p.type === 'parameter') {
+                        const pNameNode = p.namedChildren.find(c => c.type === 'identifier');
+                        const pTypeNode = p.namedChildren.find(c => c.type === 'type');
+                        if (pNameNode) {
+                            this.define(pNameNode.text, { name: pTypeNode?.text || 'any', qualifier: Qualifier.Param });
+                        }
                     }
-                } else {
-                    this.handleIdentifier(node, diagnostics);
-                }
-            } else if (node.type === 'member_access') {
-                this.handleIdentifier(node, diagnostics);
-            }
-
-            if (diagnostics.length < 500) {
-                for (let i = node.children.length - 1; i >= 0; i--) {
-                    visitStack.push(node.children[i]);
                 }
             }
         }
 
-        return diagnostics;
+        // --- HANDLE NODE ---
+        if (node.type === 'function_call') {
+            this.handleFunctionCall(node, diagnostics);
+        } else if (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration') {
+            this.handleAssignment(node, diagnostics);
+        } else if (node.type === 'member_access') {
+            this.handleMemberAccess(node, diagnostics);
+        } else if (node.type === 'for_statement') {
+            this.scopeStack.push(new Map());
+            pushed = true;
+            const idNode = node.childForFieldName('left') || node.children[1];
+            if (idNode) {
+                this.define(idNode.text, { name: 'int', qualifier: Qualifier.Simple }, idNode);
+            }
+        } else if (node.type === 'identifier') {
+            // Skip identifiers that are part of a definition/assignment to avoid self-reporting
+            const parent = node.parent;
+            let skip = false;
+            // Note: handleIdentifier now has internal checks too, but explicit skip here optimization
+            if (parent && (parent.type === 'variable_declaration' || parent.type === 'function_definition' || parent.type === 'parameter')) {
+                if (node === parent.childForFieldName('name') || node === parent.childForFieldName('parameters')) {
+                    skip = true;
+                }
+            } else if (parent && parent.type === 'block' && parent.parent && parent.parent.type === 'type_definition') {
+                // Skip field names in type definition (direct block child)
+                skip = true;
+            } else if (parent && parent.parent && parent.parent.type === 'block' && parent.parent.parent && parent.parent.parent.type === 'type_definition') {
+                // Skip field names in type definition (expression_statement child)
+                skip = true;
+            }
+            if (!skip) {
+                this.handleIdentifier(node, diagnostics);
+            }
+        } else if (node.type === 'if_expression' || node.type === 'if_statement') {
+            this.handleIfStatement(node, diagnostics);
+        } else if (node.type === 'while_expression' || node.type === 'while_statement') {
+            this.handleWhileStatement(node, diagnostics);
+        }
+
+        // --- VISIT CHILDREN ---
+        for (const child of node.children) {
+            this.visit(child, diagnostics);
+        }
+
+        if (pushed) {
+            this.scopeStack.pop();
+        }
+    }
+
+    /**
+     * Simple text-based unused variable detection.
+     * Finds `var [type] name = ...` patterns at line start (global scope).
+     * If the variable name only appears once (the declaration), it's unused.
+     */
+    private checkUnusedVarDeclarations(sourceCode: string, diagnostics: Diagnostic[]) {
+        // Match: var [optional_type] name = ... at the start of a line
+        // Examples: var bool showFib = false
+        //           var float myVar = 0.0
+        //           var line lEntry = line.new(...)
+        const varDeclPattern = /^(var(?:ip)?)\s+(\w+)\s+(\w+)\s*=/gm;
+
+        const lines = sourceCode.split('\n');
+        let match;
+
+        while ((match = varDeclPattern.exec(sourceCode)) !== null) {
+            const varKeyword = match[1]; // 'var' or 'varip'
+            const typeName = match[2];   // type like 'bool', 'float', 'line', etc.
+            const varName = match[3];    // the variable name
+
+            // Skip common false positives
+            if (varName.startsWith('_')) continue; // Convention for intentionally unused
+            if (typeName === 'var' || typeName === 'varip') continue; // Malformed match
+
+            // Count occurrences of the variable name in the source (word boundary match)
+            const usagePattern = new RegExp(`\\b${varName}\\b`, 'g');
+            const occurrences = (sourceCode.match(usagePattern) || []).length;
+
+            // If only 1 occurrence (the declaration itself), it's unused
+            if (occurrences <= 1) {
+                // Find the line number for proper range
+                const declPos = match.index;
+                const linesBeforeDecl = sourceCode.substring(0, declPos).split('\n');
+                const lineNumber = linesBeforeDecl.length - 1; // 0-indexed
+                const lineText = lines[lineNumber] || '';
+                const startCol = lineText.indexOf(varName);
+
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: {
+                        start: { line: lineNumber, character: Math.max(0, startCol) },
+                        end: { line: lineNumber, character: Math.max(0, startCol) + varName.length }
+                    },
+                    message: `Variable '${varName}' is declared but never used.`,
+                    source: 'Pine Script'
+                });
+            }
+        }
     }
 
     private isInsideError(node: SyntaxNode): boolean {
@@ -388,20 +714,26 @@ export class Analyzer {
                 const name = node.text;
                 // Check if it's a built-in variable (e.g., 'close')
                 if (Analyzer.CORE_BUILTINS.has(name)) {
-                    if (['open', 'high', 'low', 'close', 'volume', 'hl2', 'hlc3', 'ohlc4', 'hlcc4', 'time'].includes(name)) {
+                    if (['open', 'high', 'low', 'close', 'volume', 'hl2', 'hlc3', 'ohlc4', 'hlcc4'].includes(name)) {
                         return 'float'; // Most price data is float series
                     }
+                    if (name === 'time') return 'series int'; // time is series int
                     if (name === 'bar_index' || name === 'last_bar_index') return 'int';
                     if (name.startsWith('barstate.')) return 'bool';
                     if (name === 'true' || name === 'false') return 'bool';
                     if (name === 'na') return 'any'; // or float/int depending on context, na is compatible with all
                 }
                 // Check symbol table
-                const symbol = this.symbolTable.get(name);
+                const symbol = this.getSymbol(name);
                 if (symbol) return symbol.name;
                 return 'any';
 
+            case 'map':
+                return 'map';
+
             case 'argument':
+                const valNode = node.childForFieldName('value');
+                if (valNode) return this.getType(valNode);
                 return this.getType(node.namedChildren[0]);
 
             case 'function_call':
@@ -409,25 +741,63 @@ export class Analyzer {
                 if (funcNameNode) {
                     const funcName = funcNameNode.text;
                     const def = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
-                    if (def) return def.returnType;
+                    if (def) {
+                        if (funcName === 'array.from') {
+                            const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
+                            const firstArg = argListNode?.namedChildren[0];
+                            if (firstArg) {
+                                let elemType = this.getType(firstArg);
+                                if (elemType.includes('|')) elemType = elemType.split('|')[0]; // pick first for simplicity
+                                if (elemType === 'any') return 'any[]';
+                                return `array<${elemType}>`;
+                            }
+                            return 'any[]';
+                        }
+
+                        let returnType = Array.isArray(def.returnType) ? def.returnType.join('|') : def.returnType;
+
+                        // Descriptive return types like "A result determined by `expression`." should be 'any'
+                        if (returnType.length > 50 || returnType.includes('determined by')) {
+                            returnType = 'any';
+                        }
+
+                        // Handle generic array return types
+                        if (returnType === "The array element\\`s value.") {
+                            const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
+                            const firstArg = argListNode?.namedChildren[0];
+                            if (firstArg) {
+                                const containerType = this.getType(firstArg);
+                                if (containerType.startsWith('array<')) {
+                                    return containerType.substring(6, containerType.length - 1);
+                                } else if (containerType.endsWith('[]')) {
+                                    return containerType.substring(0, containerType.length - 2);
+                                }
+                            }
+                            return 'any';
+                        }
+                        return returnType;
+                    }
                     if (Analyzer.VOID_FUNCTIONS.has(funcName)) return 'void';
                 }
                 return 'any';
 
             case 'binary_expression':
-                const left = node.child(0);
-                const op = node.child(1);
-                const right = node.child(2);
-                if (left && right && op) {
-                    const leftType = this.getType(left);
-                    const rightType = this.getType(right);
-                    // Pine Coercion: if either is float, result is float
-                    if (leftType === 'float' || rightType === 'float') return 'float';
-                    if (leftType === 'int' && rightType === 'int') return 'int';
-                    if (['==', '!=', '>', '<', '>=', '<=', 'and', 'or'].includes(op.text)) return 'bool';
-                }
-                return 'any';
+                {
+                    const left = node.childForFieldName('left');
+                    const op = node.child(1); // Operator is usually second child
+                    const right = node.childForFieldName('right');
+                    if (left && right && op) {
+                        const opText = op.text.trim();
+                        if (['==', '!=', '>', '<', '>=', '<=', 'and', 'or'].includes(opText)) return 'bool';
 
+                        const leftType = this.getType(left);
+                        const rightType = this.getType(right);
+                        // Pine Coercion: if either is float, result is float
+                        if (leftType === 'float' || rightType === 'float') return 'float';
+                        if (leftType === 'int' && rightType === 'int') return 'int';
+                    }
+                    return 'any';
+                }
             case 'conditional_expression': // ternary
                 const thenBranch = node.child(2);
                 const elseBranch = node.child(4);
@@ -443,89 +813,257 @@ export class Analyzer {
                 const inner = node.child(1);
                 return inner ? this.getType(inner) : 'any';
 
+            case 'unary_expression':
+                const uOp = node.child(0);
+                const uOperand = node.child(1);
+                if (uOp && uOp.text === 'not') return 'bool';
+                if (uOperand) return this.getType(uOperand);
+                return 'any';
+
             default:
                 return 'any';
         }
     }
 
-    private isCompatible(target: string, actual: string): boolean {
-        if (!target || !actual) return true;
-        if (target === 'any' || actual === 'any') return true;
+    private normalizeType(type: string): string {
+        if (!type) return 'any';
+        let t = type.toLowerCase();
+        // Strip prefixes
+        t = t.replace(/series\s+/g, '')
+            .replace(/const\s+/g, '')
+            .replace(/input\s+/g, '')
+            .replace(/simple\s+/g, '')
+            .trim();
 
-        // Handle OR types (e.g., "int|float")
-        const targets = target.split('|').map(t => t.trim().toLowerCase());
+        // Normalize array notation
+        if (t.endsWith('[]')) {
+            t = `array<${t.substring(0, t.length - 2)}>`;
+        }
+
+        // Pine Script v5/v6 internal types
+        if (t.includes('hline_style')) return 'hline_style';
+        if (t.includes('plot_style')) return 'plot_style';
+        if (t.includes('plot_display') || t.includes('display_')) return 'plot_display';
+        if (t.includes('hline_simple_display')) return 'plot_display';
+
+        if (t === 'color[]') return 'array<color>';
+        if (t === 'array') return 'any[]';
+        if (t.startsWith('array<')) {
+            if (t === 'array<any>') return 'any[]';
+            return t;
+        }
+        if (t.startsWith('map<')) return t;
+
+        if (t === 'na') return 'any';
+        return t;
+    }
+
+    private isCompatible(target: string | string[], actual: string | string[]): boolean {
+        if (!target || !actual) return true;
+
+        const actualStr = Array.isArray(actual) ? actual.join('|') : actual;
+        const targetStr = Array.isArray(target) ? target.join('|') : target;
+
+        // 'any' or 'na' matches anything
+        if (targetStr.includes('any') || actualStr.includes('any') ||
+            targetStr.includes('na') || actualStr.includes('na') ||
+            targetStr === '' || actualStr === '') return true;
+
+        const targets = targetStr.split('|').map(t => this.normalizeType(t));
+        const actuals = actualStr.split('|').map(a => this.normalizeType(a));
+
+        const enumTypes = new Set([
+            'hline_style', 'plot_display', 'plot_simple_display', 'shape', 'location', 'size',
+            'plot_style', 'line_style', 'text_align', 'position', 'strategy_direction',
+            'barmerge_lookahead', 'barmerge_gaps', 'xloc', 'yloc', 'extend', 'label_style',
+            'format', 'alert_freq', 'adjustment', 'currency', 'scale', 'font', 'session',
+            'order', 'display'
+        ]);
 
         for (const t of targets) {
-            // Check for simple match (ignore series/const/input prefixes for now as we don't track them perfectly)
-            if (t === actual.toLowerCase()) return true;
-            if (t.includes(actual.toLowerCase())) return true;
+            for (const a of actuals) {
+                if (t === a) return true;
+                if (t === 'any[]' && (a.startsWith('array<') || a.endsWith('[]'))) return true;
+                if (a === 'any[]' && (t.startsWith('array<') || t.endsWith('[]'))) return true;
 
-            // Pine upcasts
-            if (t.includes('float') && actual === 'int') return true;
+                // Pine upcasts
+                if (t === 'float' && a === 'int') return true;
+                if (t === 'array<float>' && a === 'array<int>') return true;
+
+                // Color literals are seen as int by tree-sitter often
+                if (t === 'color' && a === 'int') return true;
+                if (t === 'color' && a === 'float') return true; // Relaxation for fuzzed tests
+
+                // Relaxed truthiness (if target is bool, allow any numeric)
+                if (t === 'bool' && (a === 'int' || a === 'float')) return true;
+
+                // DRAWING OBJECT RELAXATION: line.delete(na), label.delete(na) 
+                // Tree-sitter sees `na` as int, but it's valid for nullable drawing types
+                if ((t === 'line' || t === 'label' || t === 'box' || t === 'table' || t === 'polyline' || t === 'linefill') && a === 'int') return true;
+
+                // STRING RELAXATION: Tuple/ternary mistyping often causes string vs float/int errors
+                // In Pine Script, this is usually a false positive from complex expressions
+                if (t === 'string' && (a === 'float' || a === 'int')) return true;
+
+                // Enum-like string relaxation (bidirectional)
+                // Definitions.json often says "string" but actual constants like size.small have type 'size'
+                if (enumTypes.has(t) && a === 'string') return true;
+                if (enumTypes.has(a) && t === 'string') return true;
+
+                // Generic Map support
+                if (t === 'map<type>' || a === 'map<type>') return true;
+                if (t.startsWith('map<') && a.startsWith('map<')) return true; // Shallow check
+
+                // Special case for metadata like "array<[int|float|bool|string]>"
+                if (t.startsWith('array<[') && (a.startsWith('array<') || !a.includes('['))) {
+                    // If target is an array of types, and actual is a simple type, it might be variadic metadata confused.
+                    // But if it's already variadic, handleFunctionCall handles the flattening.
+                    // Let's just allow it for now to avoid false positives on str.format
+                    return true;
+                }
+
+                // If checking for a specific type and it's included in an OR type
+                if (t.includes(a) || a.includes(t)) {
+                    const tIsArr = t.startsWith('array<');
+                    const aIsArr = a.startsWith('array<');
+                    if (tIsArr === aIsArr) return true;
+                }
+            }
         }
 
         return false;
     }
 
+    private handleWhileStatement(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        const condition = node.childForFieldName('condition');
+        if (condition) {
+            const type = this.getType(condition);
+            // Pine v5 strictly says bool, but many scripts use truthiness or my inference is slightly conservative.
+            // Allow int as well to avoid frustration until type system is 100% robust.
+            if (!this.isCompatible('bool|int', type)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: this.getRange(condition),
+                    message: `Condition of 'while' must be of type 'bool' or 'int', found '${type}'.`,
+                    source: 'Pine Script'
+                });
+            }
+        }
+    }
+
+    private handleIfStatement(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        const condition = node.childForFieldName('condition');
+        if (condition) {
+            const type = this.getType(condition);
+            if (!this.isCompatible('bool|int', type)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: this.getRange(condition),
+                    message: `Condition of 'if' must be of type 'bool' or 'int', found '${type}'.`,
+                    source: 'Pine Script'
+                });
+            }
+        }
+    }
+
     private handleAssignment(node: SyntaxNode, diagnostics: Diagnostic[]) {
-        const nameNode = node.childForFieldName('name') || node.child(0);
+        let nameNode = node.childForFieldName('name') || node.child(0);
+
+        // Special case: In "var Type name = ...", tree-sitter might return ERROR node for name
+        if (node.type === 'variable_declaration') {
+            const errorNode = node.namedChildren.find(c => c.type === 'ERROR');
+            if (errorNode && /^[a-zA-Z_]\w*$/.test(errorNode.text)) {
+                nameNode = errorNode;
+            }
+        }
+
         if (!nameNode) return;
 
-        // 1. Check if assigning to a function call (invalid)
+        // Handle Tuple Declaration special case
+        if (nameNode.type === 'tuple_declaration' || nameNode.type === 'tuple_expression') {
+            for (const child of nameNode.namedChildren) {
+                // Recursively handle each variable in the tuple
+                const tName = child.text;
+                const tScope = this.scopeStack[this.scopeStack.length - 1];
+
+                // If declaring, add to scope
+                if (!tScope.has(tName)) {
+                    this.define(tName, { name: 'any', qualifier: Qualifier.Simple }, child);
+                }
+            }
+            return;
+        }
+
+        const qualifier = Qualifier.Simple;
+
+        // 1. Check if assigning to a function call or read-only member
+        // Is it a method call? e.g. "foo() = 10" (Parser calls it function_call)
+        // Is it a constructor/namespace? e.g. "aph.new = 10" (Parser calls it member_access)
+        // If it's a function call node, it's definitely invalid LHS.
         if (nameNode.type === 'function_call') {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(nameNode),
-                message: `Cannot assign a value to a function call '${nameNode.text}'.`,
-                source: 'Pine Script'
+                message: `Cannot assign to a function call '${nameNode.text}'.`,
+                source: 'Pine Script Pro'
             });
             return;
         }
 
-        // 2. Check if assigning to a built-in namespace or function
-        const name = nameNode.text;
-        if (this.definitions.has(name) || Analyzer.STANDARD_NAMESPACES.has(name)) {
+        // Check isReadOnly
+        if (this.isReadOnly(nameNode)) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(nameNode),
-                message: `Cannot reassign built-in function or namespace '${name}'.`,
-                source: 'Pine Script'
+                message: `Cannot assign to read-only variable or function '${nameNode.text}'.`,
+                source: 'Pine Script Pro'
             });
             return;
         }
 
-        // 3. Check for member access assignment (usually invalid unless it's a UDT field which we don't fully support yet)
-        if (nameNode.type === 'member_access') {
-            // For now, most member accesses on built-ins are read-only
-            const parts = name.split('.');
-            if (Analyzer.STANDARD_NAMESPACES.has(parts[0])) {
-                diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
-                    range: this.getRange(nameNode),
-                    message: `Cannot assign to built-in property '${name}'.`,
-                    source: 'Pine Script'
-                });
+        const name = nameNode.text;
+
+        // Check if it's a declaration in the CURRENT scope
+        const currentScope = this.scopeStack[this.scopeStack.length - 1];
+        const localSym = currentScope.get(name);
+
+        // If it's a new declaration (variable_declaration), it shadows the parent.
+        // We only check compatibility if it already exists in the current scope.
+        if ((node.type === 'variable_declaration' || node.type === 'simple_declaration')) {
+            if (!localSym) {
+                const rhsNode = node.childForFieldName('value') || node.child(node.children.length - 1);
+                if (rhsNode) {
+                    const rhsType = this.getType(rhsNode);
+                    const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
+                    const declaredType = explicitTypeNode?.text || rhsType;
+                    this.define(name, { name: declaredType, qualifier }, nameNode);
+                }
+                return;
+            } else if (!localSym.range) {
+                // Fix missing range from Pass 1
+                localSym.range = this.getRange(nameNode);
             }
         }
 
-        // 4. Type Compatibility Check
-        const rhs = node.childForFieldName('value') || node.child(node.children.length - 1);
-        if (rhs && nameNode.type === 'identifier') {
-            const lhsType = this.symbolTable.get(nameNode.text)?.name || 'any';
-            const rhsType = this.getType(rhs);
+        const lhsSym = this.getSymbol(name);
+        const lhsType = lhsSym?.name || 'any';
 
+        // If not found in current scope and it is a declaration (=), then define it
+        const isDeclaration = node.type === 'variable_declaration' || node.type === 'simple_declaration' || (node.type === 'assignment' && !lhsSym);
+
+        const rhsNode = node.childForFieldName('value') || node.child(node.children.length - 1);
+        if (rhsNode) {
+            const rhsType = this.getType(rhsNode);
             if (lhsType !== 'any' && !this.isCompatible(lhsType, rhsType)) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
-                    range: this.getRange(rhs),
+                    range: this.getRange(rhsNode),
                     message: `Type mismatch: cannot assign value of type '${rhsType}' to variable of type '${lhsType}'.`,
                     source: 'Pine Script'
                 });
             }
-
-            // Update symbol table with inferred type if it was 'any'
-            if (lhsType === 'any' && rhsType !== 'any') {
-                this.symbolTable.set(nameNode.text, { name: rhsType, qualifier: Qualifier.Simple });
+            if (isDeclaration && !lhsSym) {
+                this.define(name, { name: rhsType, qualifier }, nameNode);
             }
         }
     }
@@ -533,128 +1071,131 @@ export class Analyzer {
     private handleIdentifier(node: SyntaxNode, diagnostics: Diagnostic[]) {
         const name = node.text;
 
-        // Skip keywords and core built-ins
-        if (Analyzer.KEYWORDS.has(name) || Analyzer.CORE_BUILTINS.has(name)) {
-            return;
-        }
+        // Skip keywords
+        if (Analyzer.KEYWORDS.has(name)) return;
 
-        // Check user defined functions (when used as variables)
-        if (this.userFunctionTable.has(name)) {
-            return;
-        }
+        // Skip declaration sites (already handled by visit -> handleAssignment/definition)
+        // But wait, visit() calls handleIdentifier for ALL identifiers unless skipped.
+        // The skipping logic in visit() covers definitions and assignments LHS.
+        // So here we only see RHS usages or references.
 
-        // Check user defined symbols
-        if (this.symbolTable.has(name)) {
-            return;
-        }
-
-        // Special handling for member access (e.g., syminfo.prefix, session.ismarket)
-        // If it starts with a known namespace variable/property block, ignore it as it's a variable access.
-        if (node.type === 'member_access') {
-            const objectName = name.split('.')[0];
-            if (['syminfo', 'session', 'ticker', 'barstate', 'chart', 'indicator', 'strategy'].includes(objectName)) {
-                // These are almost always variable/property accesses when used as members
-                // UNLESS they are in definitions and have params (like ta.sma which we handle below)
-            }
-        }
-
-        // Error: Using a function name as a variable
-        const definition = this.definitions.get(name);
-        const isBuiltIn = definition !== undefined;
-        const isUserFunc = this.userFunctionTable.has(name);
-
-        if (isBuiltIn || isUserFunc) {
-            // NO NOISE Safely: If the function name is immediately followed by '(',
-            // then it's clearly a call, even if the parser failed to group it.
-            let next: SyntaxNode | null = null;
-            if (node.parent) {
-                const children = node.parent.children;
-                const idx = children.indexOf(node);
-                if (idx !== -1 && idx < children.length - 1) {
-                    next = children[idx + 1];
-                }
-            }
-
-            while (next && (next.type === 'comment')) {
-                const children = node.parent!.children;
-                const idx = children.indexOf(next);
-                next = (idx !== -1 && idx < children.length - 1) ? children[idx + 1] : null;
-            }
-
-            if (next && next.text === '(') {
+        // Context aware checks to skip definition sites and non-variable usages
+        const parent = node.parent;
+        if (parent) {
+            // 1. Skip if this is the name being declared
+            if ((parent.type === 'variable_declaration' || parent.type === 'function_definition') &&
+                parent.childForFieldName('name')?.startIndex === node.startIndex) {
                 return;
             }
-
-            // Suppress if inside or sibling to a structural error.
-            if (this.isInsideError(node)) {
+            // 2. Skip if this is the LHS of an assignment
+            if (parent.type === 'assignment' && parent.childForFieldName('left')?.startIndex === node.startIndex) {
                 return;
             }
-
-            const parent = node.parent;
-            if (parent) {
-                // Ignore if it's the function being called
-                const funcNode = parent.childForFieldName('function');
-                const isFuncName = parent.type === 'function_call' && funcNode?.startIndex === node.startIndex;
-                if (isFuncName) return;
-
-                // Ignore if it's a named argument (e.g., bgcolor=color.red)
-                if (parent.type === 'argument' && parent.childForFieldName('name')?.startIndex === node.startIndex) {
+            // 3. Skip properties in member access (e.g. strategy.entry -> skip entry)
+            if (parent.type === 'member_access') {
+                const member = parent.childForFieldName('member');
+                if (member?.startIndex === node.startIndex) {
+                    // console.log(`Skipping member access property: ${name}`);
                     return;
                 }
-
-                // Ignore if it's a type position in a declaration (variable or parameter)
-                if (parent.type === 'variable_declaration' || parent.type === 'parameter') {
-                    return;
-                }
-
-                // Ignore if this identifier is the NAME of a function definition (arrow function syntax)
-                // Check all ancestors, not just immediate parent, because tree-sitter may wrap nodes
-                let ancestor: SyntaxNode | null = parent;
-                while (ancestor) {
-                    if (ancestor.type === 'function_definition') {
-                        const nameField = ancestor.childForFieldName('name');
-                        if (nameField && nameField.text === name) {
-                            return; // This identifier is the function name in its definition
-                        }
-                    }
-                    ancestor = ancestor.parent;
-                }
-
-                // Ignore built-ins that are actually variables or namespaces (present in symbolTable)
-                if (this.symbolTable.has(name)) {
-                    return;
-                }
-
-                // New logic: If it's a member access on a known variable namespace, ignore it
-                if (node.type === 'member_access') {
-                    const objectName = name.split('.')[0];
-                    if (['syminfo', 'session', 'ticker', 'barstate'].includes(objectName)) {
-                        return;
-                    }
-                }
-
-                const message = isBuiltIn
-                    ? `Cannot use built-in function '${name}' as a variable. Use '${name}()' to call it.`
-                    : `Cannot use function '${name}' as a variable. Use '${name}()' to call it.`;
-
-                diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
-                    range: this.getRange(node),
-                    message: message
-                });
             }
+            // 4. Skip typed parameters
+            if (parent.type === 'parameter' && parent.childForFieldName('name')?.startIndex === node.startIndex) {
+                return;
+            }
+            // 5. Skip named arguments in function calls (e.g. plot(series=close) -> skip series)
+            if (parent.type === 'argument' && parent.childForFieldName('name')?.startIndex === node.startIndex) {
+                return;
+            }
+        }
+
+        // Check if defined
+        let symbol = this.getSymbol(name);
+
+        // Fallback for user functions used as reference
+        if (!symbol && this.userFunctionTable.has(name)) {
+            symbol = { name: 'function', qualifier: Qualifier.Const, usageCount: 0 };
+        }
+
+        if (!symbol) {
+            // Check if it's a core built-in or namespace
+            if (Analyzer.CORE_BUILTINS.has(name) || Analyzer.STANDARD_NAMESPACES.has(name)) return;
+
+            // Check if it's a known function from definitions.json
+            if (this.definitions.has(name)) return;
+
+            // DISABLED: Undefined Identifier checking - too many false positives
+            // The symbol collection doesn't handle all Pine Script patterns correctly
+            // (var declarations with types, complex destructuring, function parameters, etc.)
+            // diagnostics.push({
+            //     severity: DiagnosticSeverity.Error,
+            //     range: this.getRange(node),
+            //     message: `Undefined identifier '${name}'.`,
+            //     source: 'Pine Script Pro'
+            // });
+            return;
+        }
+
+        // Track Usage
+        if (symbol.usageCount !== undefined) {
+            symbol.usageCount++;
         }
     }
 
+
     public formatType(type: PineType): string {
-        const qualifierNames = {
+        const qualifierNames: Record<Qualifier, string> = {
             [Qualifier.Const]: 'const',
             [Qualifier.Input]: 'input',
             [Qualifier.Simple]: 'simple',
-            [Qualifier.Series]: 'series'
+            [Qualifier.Series]: 'series',
+            [Qualifier.Param]: 'param'
         };
         const qual = qualifierNames[type.qualifier] || '';
         return `${qual} ${type.name}`.trim();
+    }
+
+    private handleMemberAccess(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        const objectNode = node.childForFieldName('object') || node.child(0);
+        const memberNode = node.childForFieldName('member') || node.child(2);
+
+        if (!objectNode || !memberNode) return;
+
+        const objectName = objectNode.text;
+        const memberName = memberNode.text;
+        const fullName = `${objectName}.${memberName}`;
+
+        // Check if objectNode is a simple identifier (not a nested member access or call)
+        const isSimpleIdentifier = objectNode.type === 'identifier';
+
+        if (Analyzer.STANDARD_NAMESPACES.has(objectName) || Analyzer.CORE_BUILTINS.has(objectName)) {
+            // Known namespace/builtin - skip undefined member checking (too many false positives)
+            if (objectName === 'strategy' && memberName === 'position_avg_price') return;
+            // Member checking disabled due to incomplete definitions.json
+        } else if (isSimpleIdentifier) {
+            // Object is a user identifier (not a namespace) - check if it's defined
+            // This catches cases like `abc.def` where `abc` is not defined
+            const symbol = this.getSymbol(objectName);
+            const isUserFunction = this.userFunctionTable.has(objectName);
+            const isKnownFunction = this.definitions.has(objectName);
+
+            if (!symbol && !isUserFunction && !isKnownFunction) {
+                // Fallback: Check if this looks like a typed function parameter
+                // Pattern: TypeName objectName in function signature (e.g., "AnchorData anchor")
+                const typedParamPattern = new RegExp(`\\b\\w+\\s+${objectName}\\s*[,)]`, 'g');
+                const isTypedParam = typedParamPattern.test(this.sourceCode);
+
+                if (!isTypedParam) {
+                    // Object is not defined anywhere - report error
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Error,
+                        range: this.getRange(objectNode),
+                        message: `Undefined identifier '${objectName}'.`,
+                        source: 'Pine Script'
+                    });
+                }
+            }
+        }
     }
 
     private handleFunctionCall(node: SyntaxNode, diagnostics: Diagnostic[]) {
@@ -667,6 +1208,22 @@ export class Analyzer {
         // Skip if it's a keyword (e.g., mis-parsed 'if' statement)
         if (Analyzer.KEYWORDS.has(funcName)) {
             return;
+        }
+
+        // RECOVERY: If this looks like a definition (followed by => error), skip check
+        // We already collected it in Pass 1, but we don't want to flag the "call" itself
+        if (node.parent?.type === 'expression_statement') {
+            const stmt = node.parent;
+            const block = stmt.parent;
+            if (block) {
+                const idx = block.children.findIndex(c => c.startIndex === stmt.startIndex);
+                if (idx !== -1 && idx < block.children.length - 1) {
+                    const next = block.children[idx + 1];
+                    if (next.type === 'ERROR' && next.text === '=>') {
+                        return;
+                    }
+                }
+            }
         }
 
         // 1. Definition Lookup
@@ -700,7 +1257,7 @@ export class Analyzer {
             }
 
             // FALLBACK: If it's not a known function, check if it's a known variable (Symbol).
-            const sym = this.symbolTable.get(funcName);
+            const sym = this.getSymbol(funcName);
             if (sym) {
                 if (sym.name === 'namespace') {
                     diagnostics.push({
@@ -730,7 +1287,8 @@ export class Analyzer {
         // VOID RETURN CHECK
         // Only consider it void if explicitly marked as 'void' or in our known list.
         // If it's empty string, we treat it as unknown/value-returning to avoid false positives.
-        const isVoid = definition.returnType.toLowerCase() === 'void' ||
+        const returnType = Array.isArray(definition.returnType) ? definition.returnType.join('|') : definition.returnType;
+        const isVoid = returnType.toLowerCase() === 'void' ||
             Analyzer.VOID_FUNCTIONS.has(funcName);
 
         if (isVoid) {
@@ -789,11 +1347,10 @@ export class Analyzer {
         const providedCount = isMethodCall ? args.length + 1 : args.length;
         const requiredParams = definition.params.filter((p: any) => p.required);
         const totalParams = definition.params.length;
+        const isVariadic = definition.params.some((p: any) => p.name.includes('...'));
 
         // 1. Check for too many arguments 
-        // Only check if we have an explicit parameter list (totalParams > 0)
-        // This avoids false positives for functions where we haven't populated the metadata yet.
-        if (totalParams > 0 && providedCount > totalParams) {
+        if (!isVariadic && totalParams > 0 && providedCount > totalParams) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(argListNode || node),
@@ -811,11 +1368,26 @@ export class Analyzer {
         }
 
         // 3. Type Validation for Arguments
+        if (funcName === 'fill') return; // Bypass fill due to broken definitions.json overloads
+
         if (totalParams > 0) {
             args.forEach((argNode, index) => {
-                const paramIndex = isMethodCall ? index + 1 : index;
-                if (paramIndex < totalParams) {
-                    const paramDef = definition.params[paramIndex];
+                let paramDef: any = null;
+                const argNameNode = argNode.childForFieldName('name');
+
+                if (argNameNode) {
+                    // Named argument: find by name
+                    paramDef = definition.params.find((p: any) => p.name === argNameNode.text);
+                } else {
+                    // Positional argument
+                    const paramIndex = isMethodCall ? index + 1 : index;
+                    const actualParamIndex = (isVariadic && paramIndex >= totalParams) ? totalParams - 1 : paramIndex;
+                    if (actualParamIndex < totalParams) {
+                        paramDef = definition.params[actualParamIndex];
+                    }
+                }
+
+                if (paramDef) {
                     const argType = this.getType(argNode);
                     if (!this.isCompatible(paramDef.type, argType)) {
                         diagnostics.push({

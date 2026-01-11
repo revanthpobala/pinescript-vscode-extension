@@ -641,16 +641,16 @@
           "optional": true
         },
         {
-          "name": "show_last",
-          "desc": "If set, defines the number of shapes (from the last bar back to the past) to plot on chart.",
-          "type": "input int",
-          "optional": false
-        },
-        {
           "name": "size",
           "desc": "Size of shapes on the chart. Possible values are: [size.auto](#var_size.auto), [size.tiny](#var_size.tiny), [size.small](#var_size.small), [size.normal](#var_size.normal), [size.large](#var_size.large), [size.huge](#var_size.huge).  \nDefault is [size.auto](#var_size.auto).",
           "type": "const string",
           "optional": true
+        },
+        {
+          "name": "show_last",
+          "desc": "If set, defines the number of shapes (from the last bar back to the past) to plot on chart.",
+          "type": "input int",
+          "optional": false
         },
         {
           "name": "display",
@@ -720,16 +720,16 @@
           "optional": true
         },
         {
-          "name": "show_last",
-          "desc": "If set, defines the number of chars (from the last bar back to the past) to plot on chart.",
-          "type": "input int",
-          "optional": false
-        },
-        {
           "name": "size",
           "desc": "Size of characters on the chart. Possible values are: [size.auto](#var_size.auto), [size.tiny](#var_size.tiny), [size.small](#var_size.small), [size.normal](#var_size.normal), [size.large](#var_size.large), [size.huge](#var_size.huge).  \nDefault is [size.auto](#var_size.auto).",
           "type": "const string",
           "optional": true
+        },
+        {
+          "name": "show_last",
+          "desc": "If set, defines the number of chars (from the last bar back to the past) to plot on chart.",
+          "type": "input int",
+          "optional": false
         },
         {
           "name": "display",

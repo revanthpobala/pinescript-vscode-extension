@@ -38,12 +38,12 @@ async function build() {
         }
     });
 
-    // Copy tree-sitter.wasm (library)
-    const treeSitterWasmSrc = './server/node_modules/web-tree-sitter/tree-sitter.wasm';
-    const treeSitterWasmDest = './server/out/tree-sitter.wasm';
+    // Copy web-tree-sitter.wasm (library)
+    const treeSitterWasmSrc = './server/node_modules/web-tree-sitter/web-tree-sitter.wasm';
+    const treeSitterWasmDest = './server/out/web-tree-sitter.wasm';
     if (await fs.pathExists(treeSitterWasmSrc)) {
         await fs.copy(treeSitterWasmSrc, treeSitterWasmDest);
-        console.log('Copied tree-sitter.wasm to server/out');
+        console.log('Copied web-tree-sitter.wasm to server/out');
     } else {
         console.warn('Warning: tree-sitter.wasm not found in node_modules');
     }

@@ -1,0 +1,41 @@
+indicator("Test Fixes")
+
+// 1. Namespace Protection
+strategy.entry("Long", strategy.long) // strategy should not be flagged as variable
+color c = color.red // color should not be flagged as variable
+
+// 2. Map Support & Generic Mapping
+m = map.new<int, string>()
+val = m.get(1) // map.get argument 0 is map<type>, 1 is map<type> (bad metadata). Should pass.
+
+// 3. Hex Color Compatibility
+plot(close, color=#ff0000) // color=#ff0000 should not be a type mismatch (int found)
+
+// 4. Truthiness in Function Arguments (plotshape expects bool)
+plotshape(close > 0 ? 1 : 0) // int passed to bool param. Should pass.
+
+// 5. Internal Type Normalization
+hline(70, linestyle=hline.style_dotted) // hline_style
+plot(close, display=display.all) // plot_display
+plotshape(true, color=color.red, textcolor=color.new(color.white, 0)) // color
+display_val = display.all
+// 6. Synthetic Patterns
+import user/mylib/1 // Default alias 'mylib'
+mylib.func() // Should be resolved
+
+myFunc(int a) => string "hello" // Return type suffix
+myFunc(10)
+
+// 7. Extreme Truthiness & Float-to-Color (User claims false positives)
+plotshape(1.0) // Float as bool
+plotshape(true, color=1.0) // Float as color
+
+// 8. Positional Plotshape (Testing swapped metadata fix)
+// series, title, style, location, color, offset, text, textcolor, editable, size, show_last, display
+plotshape(true, "T", "xcross", "top", color.red, 0, "Txt", color.blue, true, "auto", 10, display.all)
+
+// 9. AST Recovery for Complex Types (ntxiprg)
+ntxiprg(matrix<box> lfqz, matrix<box> vvadxc, array<label> enible, array<string> zcx, array<table> keo) => array<linefill>
+    array.new_linefill()
+
+ntxiprg(na, na, na, na, na) // Should be valid now

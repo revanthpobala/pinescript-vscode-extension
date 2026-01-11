@@ -102,7 +102,8 @@ connection.onInitialize(async (params: InitializeParams) => {
             semanticTokensProvider: {
                 legend: legend,
                 full: true
-            }
+            },
+            renameProvider: true
         }
     };
     return result;
@@ -143,9 +144,12 @@ connection.onHover((params) => {
         const def = definitions?.functions?.find((f: any) => f.name === word);
         if (def) {
             const lines: string[] = [`**${def.name}**`];
-            const returnType = def.returnType;
-            if (returnType && !returnType.startsWith('UNKNOWN') && returnType !== '') {
-                lines.push(`*${returnType}*`);
+            const returnTypeRaw = def.returnType;
+            if (returnTypeRaw) {
+                const returnType = Array.isArray(returnTypeRaw) ? returnTypeRaw.join('|') : returnTypeRaw;
+                if (!returnType.startsWith('UNKNOWN') && returnType !== '') {
+                    lines.push(`*${returnType}*`);
+                }
             }
             lines.push('');
             if (def.description) {
@@ -174,11 +178,11 @@ connection.onHover((params) => {
                 return { contents: { kind: MarkupKind.Markdown, value: lines.join('\n') } };
             }
 
-            const type = analyzer.symbolTable.get(word);
-            if (type) {
+            const sym = analyzer.getSymbol(word);
+            if (sym) {
                 const lines: string[] = [
                     `**(variable) ${word}**`,
-                    `*${analyzer.formatType(type)}*`
+                    `*${analyzer.formatType(sym)}*`
                 ];
                 return { contents: { kind: MarkupKind.Markdown, value: lines.join('\n') } };
             }
@@ -187,116 +191,32 @@ connection.onHover((params) => {
     return null;
 });
 
-connection.languages.semanticTokens.on((params) => {
-    const doc = documents.get(params.textDocument.uri);
-    if (!doc || !parser) return { data: [] };
-
-    const builder = new SemanticTokensBuilder();
-    const text = doc.getText();
-    const tree = parser.parse(text);
-    const analyzer = analyzers.get(params.textDocument.uri);
-
-    const traverse = (node: any) => {
-        if (node.type === 'identifier') {
-            const name = node.text;
-            let typeIdx = -1;
-            let modIdx = 0;
-
-            if (definitions.functions.some((f: any) => f.name === name)) {
-                typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.function);
-                modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.defaultLibrary);
-            } else if (analyzer?.userFunctionTable.has(name)) {
-                typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.function);
-                modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.declaration);
-            } else if (analyzer?.symbolTable.has(name)) {
-                const type = analyzer.symbolTable.get(name);
-                if (type?.name === 'namespace') {
-                    typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.namespace);
-                } else {
-                    typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.variable);
-                    if (type?.qualifier === 0) { // Qualifier.Const
-                        modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.readonly);
-                    }
-                }
-            }
-
-            if (typeIdx !== -1) {
-                builder.push(
-                    node.startPosition.row,
-                    node.startPosition.column,
-                    node.text.length,
-                    typeIdx,
-                    modIdx
-                );
-            }
-        }
-
-        for (const child of node.children) {
-            traverse(child);
-        }
-    };
-
-    if (tree) traverse(tree.rootNode);
-    return builder.build();
-});
-
-
 connection.onSignatureHelp((params) => {
     const doc = documents.get(params.textDocument.uri);
     if (!doc || !parser) return null;
 
     const text = doc.getText();
-    const offset = doc.offsetAt(params.position);
-
-    let parenDepth = 0;
-    let funcStart = -1;
-    let activeParam = 0;
-
-    for (let i = offset - 1; i >= 0; i--) {
-        const char = text[i];
-        if (char === ')') parenDepth++;
-        else if (char === '(') {
-            if (parenDepth === 0) {
-                funcStart = i;
-                break;
-            }
-            parenDepth--;
-        } else if (char === ',' && parenDepth === 0) {
-            activeParam++;
-        } else if (char === '\n' && parenDepth === 0) {
-            break;
-        }
-    }
-
-    if (funcStart === -1) return null;
-
-    let funcEnd = funcStart - 1;
-    while (funcEnd >= 0 && /\s/.test(text[funcEnd])) funcEnd--;
-
-    let funcNameStart = funcEnd;
-    while (funcNameStart >= 0 && /[a-zA-Z0-9_.]/.test(text[funcNameStart])) funcNameStart--;
-    funcNameStart++;
-
-    const funcName = text.substring(funcNameStart, funcEnd + 1);
-
+    const tree = parser.parse(text);
     const analyzer = analyzers.get(params.textDocument.uri);
-    const def = definitions?.functions?.find((f: any) => f.name === funcName) || analyzer?.userFunctionTable.get(funcName);
+    if (!tree || !analyzer) return null;
 
-    if (!def || !def.params || def.params.length === 0) return null;
+    return analyzer.onSignatureHelp(tree.rootNode as any, params.position);
+});
 
-    const paramLabels = def.params.map((p: any) => `${p.name}: ${p.type}`);
-    const signature: SignatureInformation = {
-        label: `${def.name}(${paramLabels.join(', ')})`,
-        parameters: def.params.map((p: any) => ({
-            label: `${p.name}: ${p.type}`,
-            documentation: p.description || undefined
-        }))
-    };
+connection.onRenameRequest((params) => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || !parser) return null;
 
+    const text = doc.getText();
+    const tree = parser.parse(text);
+    const analyzer = analyzers.get(params.textDocument.uri);
+    if (!tree || !analyzer) return null;
+
+    const edits = analyzer.onRenameRequest(tree.rootNode as any, params.position, params.newName);
     return {
-        signatures: [signature],
-        activeSignature: 0,
-        activeParameter: Math.min(activeParam, def.params.length - 1)
+        changes: {
+            [params.textDocument.uri]: edits
+        }
     };
 });
 
@@ -324,7 +244,7 @@ connection.onCompletion((params) => {
                 return {
                     label: nameWithoutNamespace,
                     kind: CompletionItemKind.Function,
-                    detail: f.returnType && !f.returnType.startsWith('UNKNOWN') ? f.returnType : undefined,
+                    detail: f.returnType ? (Array.isArray(f.returnType) ? f.returnType.join('|') : f.returnType) : undefined,
                     documentation: f.description || undefined,
                     insertText: nameWithoutNamespace,
                     data: f.name
@@ -401,7 +321,7 @@ connection.onCompletion((params) => {
             items.push({
                 label: f.name,
                 kind: CompletionItemKind.Function,
-                detail: `Built-in Function (${f.returnType && !f.returnType.startsWith('UNKNOWN') ? f.returnType : 'series float'})`,
+                detail: `Built-in Function (${f.returnType ? (Array.isArray(f.returnType) ? f.returnType.join('|') : f.returnType) : 'series float'})`,
                 documentation: f.description || undefined,
                 data: f.name,
                 sortText: '3_' + f.name
@@ -471,14 +391,17 @@ connection.languages.semanticTokens.on((params) => {
             } else if (analyzer?.userFunctionTable.has(name)) {
                 typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.function);
                 modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.declaration);
-            } else if (analyzer?.symbolTable.has(name)) {
-                const type = analyzer.symbolTable.get(name);
-                if (type?.name === 'namespace') {
-                    typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.namespace);
-                } else {
-                    typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.variable);
-                    if (type?.qualifier === 0) { // Qualifier.Const
-                        modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.readonly);
+            } else {
+                const sym = analyzer?.getSymbol(name);
+                if (sym) {
+                    const type = sym;
+                    if (type?.name === 'namespace') {
+                        typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.namespace);
+                    } else {
+                        typeIdx = legend.tokenTypes.indexOf(SemanticTokenTypes.variable);
+                        if (type?.qualifier === 0) { // Qualifier.Const
+                            modIdx = 1 << legend.tokenModifiers.indexOf(SemanticTokenModifiers.readonly);
+                        }
                     }
                 }
             }
@@ -511,7 +434,7 @@ connection.onDocumentSymbol((params) => {
     const tree = parser.parse(text);
     const symbols: DocumentSymbol[] = [];
 
-    if (!tree) return null;
+    if (!tree) return [];
     const stack: any[] = [tree.rootNode];
     while (stack.length > 0) {
         const node = stack.pop();
@@ -568,19 +491,6 @@ connection.onDocumentSymbol((params) => {
                     });
                 }
             }
-        } else if (node.type === 'if_statement' || node.type === 'for_statement') {
-            symbols.push({
-                name: node.type === 'if_statement' ? 'if' : 'for',
-                kind: SymbolKind.Module,
-                range: {
-                    start: { line: node.startPosition.row, character: node.startPosition.column },
-                    end: { line: node.endPosition.row, character: node.endPosition.column }
-                },
-                selectionRange: {
-                    start: { line: node.startPosition.row, character: node.startPosition.column },
-                    end: { line: node.startPosition.row, character: node.startPosition.column + (node.type === 'if_statement' ? 2 : 3) }
-                }
-            });
         }
 
         for (let i = node.children.length - 1; i >= 0; i--) {
