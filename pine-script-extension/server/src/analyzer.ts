@@ -1431,12 +1431,39 @@ export class Analyzer {
         const argListNode = callNode.namedChildren.find(c => c.type === 'argument_list');
         let activeParameter = 0;
         if (argListNode) {
+            let positionalCount = 0;
             for (let i = 0; i < argListNode.namedChildren.length; i++) {
                 const arg = argListNode.namedChildren[i];
+                if (arg.type === 'ERROR') continue; // Skip error nodes to match analyzer logic
+
                 if (position.line > arg.endPosition.row || (position.line === arg.endPosition.row && position.character >= arg.endPosition.column)) {
-                    activeParameter = i + 1;
+                    // This logic is simple; strictly it should check if position is *before* the next comma
+                    // But for now, just increment
+                }
+
+                // We need to determine if *this* argument covers the cursor position
+                if (position.line >= arg.startPosition.row && position.line <= arg.endPosition.row) {
+                    if (position.line === arg.startPosition.row && position.character < arg.startPosition.column) {
+                        // Before start
+                    } else if (position.line === arg.endPosition.row && position.character > arg.endPosition.column) {
+                        // After end
+                    } else {
+                        activeParameter = i; // This is the one
+                    }
                 }
             }
+
+            // Re-implementing a safer active parameter detection based on commas
+            // The tree-sitter node for argument_list contains commas as anonymous nodes
+            let commaCount = 0;
+            for (const child of argListNode.children) {
+                if (child.type === ',') {
+                    if (position.line > child.endPosition.row || (position.line === child.endPosition.row && position.character > child.endPosition.column)) {
+                        commaCount++;
+                    }
+                }
+            }
+            activeParameter = commaCount;
         }
 
         return {
