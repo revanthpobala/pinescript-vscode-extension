@@ -1371,7 +1371,11 @@ export class Analyzer {
         if (funcName === 'fill') return; // Bypass fill due to broken definitions.json overloads
 
         if (totalParams > 0) {
+            let positionalCount = 0;
             args.forEach((argNode, index) => {
+                // SKIP ERROR nodes to prevent index shifting
+                if (argNode.type === 'ERROR') return;
+
                 let paramDef: any = null;
                 const argNameNode = argNode.childForFieldName('name');
 
@@ -1380,11 +1384,12 @@ export class Analyzer {
                     paramDef = definition.params.find((p: any) => p.name === argNameNode.text);
                 } else {
                     // Positional argument
-                    const paramIndex = isMethodCall ? index + 1 : index;
+                    const paramIndex = isMethodCall ? positionalCount + 1 : positionalCount;
                     const actualParamIndex = (isVariadic && paramIndex >= totalParams) ? totalParams - 1 : paramIndex;
                     if (actualParamIndex < totalParams) {
                         paramDef = definition.params[actualParamIndex];
                     }
+                    positionalCount++;
                 }
 
                 if (paramDef) {

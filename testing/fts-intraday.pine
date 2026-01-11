@@ -1,0 +1,2899 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// 
+// FUTURES INTRADAY PRO - ES/NQ Scalping & Day Trading System
+// ================================================================================================
+// Specialized for: MES, MNQ, ES, NQ (E-mini S&P 500 & Nasdaq futures)
+// Timeframes: 1m, 5m, 15m, 30m (Intraday only)
+// 
+// Based on Mark Fisher's "The Logical Trader" - Opening Range Breakout Strategy
+// FIXED: Entry logic now matches the book exactly
+//   - Entry ONLY on breakout (not at current price)
+//   - Persistent ORB lines (visible all day)
+//   - Clear "WAIT" vs "AT ENTRY" status
+//   - Session resets at market open (9:30 AM EST), not midnight
+//   - ORB: Volume REQUIRED (Fisher's rule - institutions must confirm)
+//   - Other strategies: Volume tracked but flexible (color-coded warnings)
+//
+// MULTI-CONFIRMATION ORB SYSTEM (Professional Edition):
+//   - ORB = PRIMARY: Requires score >= 5 (ORB 4pts + 1+ confirmation)
+//     Example: ORB (4) + VWAP position (1) = 5 ✅
+//     Example: ORB (4) + Momentum (1) = 5 ✅
+//   - Non-ORB = SECONDARY: Requires score >= 8 (higher confluence bar)
+//     Example: VWAP+RSI2 (3) + Holy Grail (2) + Turtle Soup (2) + context (1) = 8 ✅
+//   - Exits: Stop/Target ONLY (no discretionary exits per Fisher's rules)
+//   - Conservative approach: Prefer missing moves over wrong trades
+// ================================================================================================
+//
+//@version=6
+strategy("Futures Intraday Pro (ES/NQ) Strategy", overlay=true, max_labels_count=500, max_lines_count=500,
+         initial_capital=10000, default_qty_type=strategy.cash, default_qty_value=10000,
+         commission_type=strategy.commission.cash_per_contract, commission_value=2.50,
+         slippage=2, calc_on_every_tick=true, calc_on_order_fills=false,
+         process_orders_on_close=false, pyramiding=0)
+
+// ================================================================================================
+// HELPER FUNCTIONS - Modular, Reusable Code
+// ================================================================================================
+
+// Calculate distance from entry in points
+calcDistanceToEntry(float price, float entry) =>
+    math.abs(price - entry) / syminfo.mintick
+
+// Check if price is near a level (within tolerance)
+isNearLevel(float price, float level, float tolerance) =>
+    math.abs(price - level) <= tolerance
+
+// Format price for display
+formatPrice(float price) =>
+    str.tostring(price, format.mintick)
+
+// Get market regime from ADX
+getMarketRegime(float adx) =>
+    adx > 25 ? "TRENDING" : adx < 20 ? "RANGING" : "MIXED"
+
+// Calculate R:R ratio
+calcRiskReward(float entry, float stop, float target, bool isLong) =>
+    risk = math.abs(entry - stop)
+    reward = math.abs(target - entry)
+    risk > 0 ? reward / risk : 0
+
+// Get Volume Z-Score (Statistical Significance)
+f_getVolumeZScore(float vol, int len) =>
+    avgVol = ta.sma(vol, len)
+    stdDevVol = ta.stdev(vol, len)
+    stdDevVol > 0 ? (vol - avgVol) / stdDevVol : 0
+
+// Sniper Mode Confirmation (15s Micro-Structure)
+// Sniper Mode Confirmation (15s Micro-Structure)
+f_getSniperConfirmation(string tf, float levelHigh, float levelLow) =>
+    // Fetch data (non-repainting for historical accuracy, but real-time for live)
+    sClose = request.security(syminfo.tickerid, tf, close, lookahead=barmerge.lookahead_off)
+    
+    // Micro-Bullish: Price is physically ABOVE the ORB High on the 15s chart
+    // This confirms the breakout is real and holding on the micro-timeframe
+    sBullish = sClose > levelHigh
+    
+    // Micro-Bearish: Price is physically BELOW the ORB Low on the 15s chart
+    sBearish = sClose < levelLow
+    
+    [sBullish, sBearish]
+
+// Validate entry quality
+validateEntry(float rr, float stopDistance, float maxStop, float orbRange, float minRR) =>
+    goodRR = rr >= minRR
+    stopOK = stopDistance <= maxStop
+    rangeOK = orbRange >= 5 and orbRange <= 100
+    [goodRR and stopOK and rangeOK, goodRR, stopOK, rangeOK]
+
+// Check momentum confirmation (uses TradingView ta.macd and ta.rsi)
+checkMomentumLong(series float macdLine, series float macdSignal, series float macdHist, series float rsi) =>
+    macdBullish = macdLine > macdSignal and macdHist > 0
+    notOverbought = rsi < 70
+    macdBullish and notOverbought
+
+checkMomentumShort(series float macdLine, series float macdSignal, series float macdHist, series float rsi) =>
+    macdBearish = macdLine < macdSignal and macdHist < 0
+    notOversold = rsi > 30
+    macdBearish and notOversold
+
+// ORB PULLBACK/RETEST DETECTION (Raschke/Fisher: "ORB levels = support/resistance ALL DAY")
+// TWO TYPES:
+// 1. EARLY pullback (2-10 bars after breakout) = FIRST THROWBACK (best odds)
+// 2. LATE retest (anytime during session) = ORB as support/resistance (still valid)
+
+// EARLY PULLBACK (within 50 min of breakout) - HIGHEST PROBABILITY
+detectPullbackLong(bool brokeOut, int barsAfter, series float priceL, series float priceC, series float orbH, series float priceO, bool momentumConfirms) =>
+    brokeOut and barsAfter >= 2 and barsAfter <= 10 and priceL <= orbH and priceC > orbH and priceC > priceO and momentumConfirms
+
+detectPullbackShort(bool brokeOut, int barsAfter, series float priceH, series float priceC, series float orbL, series float priceO, bool momentumConfirms) =>
+    brokeOut and barsAfter >= 2 and barsAfter <= 10 and priceH >= orbL and priceC < orbL and priceC < priceO and momentumConfirms
+
+// LATE RETEST (anytime during session) - ORB as S/R zone
+// CRITICAL: Only valid if initial breakout ALREADY HAPPENED (Fisher: "retest = test of breakout as new S/R")
+// Requirements: 
+//   1. Initial breakout occurred (price moved significantly away from ORB)
+//   2. Price returns CLOSE to ORB level (within 8 points)
+//   3. Price bounces with volume
+detectOrbRetestLong(bool brokeOut, series float priceL, series float priceC, series float priceH, series float orbH, bool volConfirmed) =>
+    float retestZone = 8.0  // Within 8 points of ORB high (tighter than before)
+    bool initialBreakoutHappened = brokeOut  // Must have broken out first
+    bool pricePulledBack = priceL <= (orbH + retestZone) and priceL >= (orbH - 3)  // Tests ORB level
+    bool priceBounced = priceC > orbH and priceC > priceC[1]  // Bounces up with momentum
+    bool rangeWasWide = priceH[1] > (orbH + 15)  // Price was significantly above (confirms real breakout happened)
+    initialBreakoutHappened and (rangeWasWide or pricePulledBack) and priceBounced and volConfirmed
+
+detectOrbRetestShort(bool brokeOut, series float priceH, series float priceC, series float priceL, series float orbL, bool volConfirmed) =>
+    float retestZone = 8.0  // Within 8 points of ORB low
+    bool initialBreakdownHappened = brokeOut  // Must have broken down first
+    bool pricePulledBack = priceH >= (orbL - retestZone) and priceH <= (orbL + 3)  // Tests ORB level
+    bool priceBounced = priceC < orbL and priceC < priceC[1]  // Bounces down with momentum
+    bool rangeWasWide = priceL[1] < (orbL - 15)  // Price was significantly below (confirms real breakdown happened)
+    initialBreakdownHappened and (rangeWasWide or pricePulledBack) and priceBounced and volConfirmed
+
+// Calculate time-of-day edge multiplier (Raschke: "Morning = best odds")
+calcTimeOfDayEdge(int currentTime) =>
+    isMorning = currentTime >= 830 and currentTime < 1100  // 8:30-11:00 AM CT
+    isAfternoon = currentTime >= 1100 and currentTime < 1400  // 11:00 AM-2:00 PM CT
+    isPowerHour = currentTime >= 1400 and currentTime < 1500  // 2:00-3:00 PM CT
+    edge = isMorning ? 1.2 : isAfternoon ? 1.0 : isPowerHour ? 0.8 : 0.5
+    [edge, isMorning, isAfternoon, isPowerHour]
+
+// Detect failed breakout / trap (Brooks: "Failed breakout = best reversal entry")
+detectFailedBreakoutLong(series float high1, series float high2, series float priceC, series float orbH) =>
+    high1 > orbH and priceC < orbH and high2 <= orbH
+
+detectFailedBreakoutShort(series float low1, series float low2, series float priceC, series float orbL) =>
+    low1 < orbL and priceC > orbL and low2 >= orbL
+
+// Volume Analysis Function (Extracted to reduce script size)
+f_analyzeVolume(float vol, float cl, string ticker, string tf, int timeHHMM, int lookback, float multMorn, float multMid, float multPow, float multSpike) =>
+    // STEP 1: Recent context
+    recentAvgVolume = ta.sma(vol, 20)
+    volumeZScore = f_getVolumeZScore(vol, 20)
+    
+    // STEP 2: Traditional average
+    avgVolume = ta.sma(vol, lookback)
+    
+    // STEP 3: HTF Data (15-min)
+    higherTFVolume = request.security(ticker, "15", vol, lookahead=barmerge.lookahead_off)
+    higherTFAvgVolume = request.security(ticker, "15", ta.sma(vol, 20), lookahead=barmerge.lookahead_off)
+    
+    // STEP 3B: LTF Data
+    currentTFMinutes = timeframe.in_seconds(tf) / 60
+    ltfMinutes = math.max(1, math.round(currentTFMinutes / 5))
+    ltfTimeframe = str.tostring(ltfMinutes)
+    [ltfClose, ltfVolume] = request.security(ticker, ltfTimeframe, [close, vol], lookahead=barmerge.lookahead_off)
+    ltfAvgVolume = request.security(ticker, ltfTimeframe, ta.sma(vol, 20), lookahead=barmerge.lookahead_off)
+    ltfVolumeSpike = ltfVolume > (ltfAvgVolume * 1.5)
+    
+    // STEP 4: Time-of-day multipliers
+    isETHEvening = timeHHMM >= 1700 or timeHHMM < 830
+    volumeMultiplier = isETHEvening ? 0.8 :
+                       timeHHMM >= 930 and timeHHMM < 1130 ? 1.2 :
+                       timeHHMM >= 1130 and timeHHMM < 1400 ? 0.8 :
+                       timeHHMM >= 1400 and timeHHMM < 1500 ? 1.0 :
+                       1.3
+                       
+    // STEP 5: Confirmation
+    higherTFVolumeConfirmed = higherTFAvgVolume > 0 ? higherTFVolume > (higherTFAvgVolume * volumeMultiplier) : false
+    volume3BarAvg = (vol + vol[1] + vol[2]) / 3
+    currentTFVolumeConfirmed = recentAvgVolume > 0 ? volume3BarAvg > (recentAvgVolume * volumeMultiplier) : false
+    
+    // Price momentum
+    priceNotCollapsing = cl > (cl[1] - syminfo.mintick * 10)
+    priceNotSurging = cl < (cl[1] + syminfo.mintick * 10)
+    
+    // ORB Confirmation
+    highVolumeORBLong = (higherTFVolumeConfirmed or currentTFVolumeConfirmed or ltfVolumeSpike) and priceNotCollapsing
+    highVolumeORBShort = (higherTFVolumeConfirmed or currentTFVolumeConfirmed or ltfVolumeSpike) and priceNotSurging
+    
+
+    // Hybrid Confirmation
+    htfVolRatioCheck = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+    minHTFThreshold = 0.5
+    htfVolRising = higherTFVolume > higherTFVolume[1]
+    htfSafeToTrade = htfVolRatioCheck > minHTFThreshold or htfVolRising
+    highVolume = higherTFVolumeConfirmed or (currentTFVolumeConfirmed and htfSafeToTrade)
+    
+    // Spike & Low
+    volumeSpike = recentAvgVolume > 0 ? vol > (recentAvgVolume * multSpike) : false
+    lowVolume = recentAvgVolume > 0 ? vol < (recentAvgVolume * 0.5) : false
+    
+    [volumeZScore, avgVolume, higherTFVolume, higherTFAvgVolume, ltfVolumeSpike, volumeMultiplier, higherTFVolumeConfirmed, currentTFVolumeConfirmed, highVolumeORBLong, highVolumeORBShort, highVolume, volumeSpike, lowVolume, recentAvgVolume, volume3BarAvg, ltfClose, priceNotCollapsing, priceNotSurging, ltfTimeframe, htfVolRatioCheck, minHTFThreshold, htfVolRising, htfSafeToTrade]
+
+// VWAP Signal Function
+f_calcVWAPSignals(float cl, float h, float l, bool rth, bool showBands, bool enable, bool regHours, float rsiVal, bool rsiOS, bool rsiOB) =>
+    // Use TradingView's built-in VWAP
+    vwapVal = ta.vwap(cl)
+    
+    // Calculate bands
+    typPrice = (h + l + cl) / 3
+    stdDev = ta.stdev(typPrice, 20)
+    
+    vUp1 = vwapVal + stdDev
+    vLo1 = vwapVal - stdDev
+    vUp2 = vwapVal + (stdDev * 2)
+    vLo2 = vwapVal - (stdDev * 2)
+    
+    // Signals
+    buySig = enable and regHours and cl < vLo2 and cl > cl[1]
+    sellSig = enable and regHours and cl > vUp2 and cl < cl[1]
+    
+    // RSI2 Enhanced Signals
+    rsiBuy = enable and regHours and cl < vLo2 and rsiOS and cl > cl[1]
+    rsiSell = enable and regHours and cl > vUp2 and rsiOB and cl < cl[1]
+    
+    [vwapVal, vUp1, vLo1, vUp2, vLo2, buySig, sellSig, rsiBuy, rsiSell]
+
+// ================================================================================================
+// HELPER FUNCTIONS (MODULARIZATION)
+// ================================================================================================
+
+// Function to trigger alerts
+triggerStrategyAlerts(bool buySignal, bool sellSignal, bool forceExit, bool forceExitChanged, string ticker, float price, float bScore, float sScore, string sigType) =>
+    if buySignal
+        alert('{"action": "buy", "symbol": "' + ticker + '", "price": ' + str.tostring(price) + ', "score": ' + str.tostring(bScore) + ', "type": "' + sigType + '"}', alert.freq_once_per_bar)
+    if sellSignal
+        alert('{"action": "sell", "symbol": "' + ticker + '", "price": ' + str.tostring(price) + ', "score": ' + str.tostring(sScore) + ', "type": "' + sigType + '"}', alert.freq_once_per_bar)
+    if forceExit and forceExitChanged
+        alert('{"action": "close_all", "symbol": "' + ticker + '", "reason": "FORCE_EXIT_TIME"}', alert.freq_once_per_bar)
+
+// Function to draw signal labels
+drawSignalLabel(bool isBuy, float score, bool highVol, bool lowVol) =>
+    volText = highVol ? "HIGH" : lowVol ? "LOW" : "AVG"
+    if isBuy
+        labelText = "🟢 BUY " + str.tostring(score) + "/29 | Vol:" + volText
+        label.new(bar_index, low, labelText, style=label.style_label_up, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
+    else
+        labelText = "🔴 SELL " + str.tostring(score) + "/29 | Vol:" + volText
+        label.new(bar_index, high, labelText, style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+// Function to draw Pre-Market Dashboard
+drawPreMarketDashboard(table dash, bool isPre, int timeHHMM, float price) =>
+    // Header
+    sessionLabel = isPre ? "PRE-MARKET PLANNING" : "POST-MARKET REVIEW"
+    table.cell(dash, 0, 0, "", text_color=color.yellow, bgcolor=color.new(color.blue, 0), text_size=size.normal)
+    table.cell(dash, 1, 0, "📋 " + sessionLabel, text_color=color.yellow, bgcolor=color.new(color.blue, 0), text_size=size.normal)
+    table.cell(dash, 2, 0, "", text_color=color.yellow, bgcolor=color.new(color.blue, 0), text_size=size.normal)
+    
+    // Time
+    currentTimeFormatted = timeHHMM < 1000 ? "0" + str.tostring(timeHHMM, "###") : str.tostring(timeHHMM, "####")
+    table.cell(dash, 0, 1, "TIME", text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 1, currentTimeFormatted, text_color=color.yellow, text_size=size.normal)
+    table.cell(dash, 2, 1, isPre ? "Pre-Market" : "Post-Market", text_color=color.gray, text_size=size.tiny)
+    
+    // Countdown
+    if isPre
+        minutesUntilRTH = math.floor((830 - timeHHMM) / 100) * 60 + ((830 - timeHHMM) % 100)
+        table.cell(dash, 0, 2, "RTH OPENS IN", text_color=color.white, text_size=size.tiny)
+        table.cell(dash, 1, 2, str.tostring(minutesUntilRTH) + " min", text_color=color.orange, text_size=size.normal)
+        table.cell(dash, 2, 2, "8:30 AM CT", text_color=color.gray, text_size=size.tiny)
+        
+        // Price
+        table.cell(dash, 0, 3, "CURRENT PRICE", text_color=color.white, text_size=size.tiny)
+        table.cell(dash, 1, 3, str.tostring(price, format.mintick), text_color=color.yellow, text_size=size.large)
+        table.cell(dash, 2, 3, "Pre-Market", text_color=color.gray, text_size=size.tiny)
+
+// Function to detect and draw reversal warnings
+drawReversalWarnings(bool orbComp, float priceC, float orbQ2H, float orbQ3H, float orbH, float orbL, bool failedBullTrap, bool failedBearTrap, bool inQ1, float orbQ1H, bool macdBull, bool macdBear) =>
+    // Detect potential bullish reversal
+    potBullRev = orbComp and priceC < orbQ2H and priceC > orbL and (failedBearTrap or (priceC > priceC[1] and priceC[1] < priceC[2] and low < low[1] and macdBull) or (inQ1 and priceC > orbQ1H and macdBull))
+    if potBullRev and not potBullRev[1]
+        revReason = failedBearTrap ? "Failed Bear Trap" : inQ1 ? "Q1 Bounce (Strong Support)" : "Bullish Momentum Shift"
+        label.new(bar_index, low, "🔄 REVERSAL\nUP", style=label.style_label_up, color=color.new(color.green, 0), textcolor=color.white, size=size.normal, tooltip="BULLISH REVERSAL DETECTED\n\nReason: " + revReason + "\n\n⚠️ SHORTS: Consider exit\n✅ LONGS: Potential entry")
+    
+    // Detect potential bearish reversal
+    potBearRev = orbComp and priceC > orbQ2H and priceC < orbH and (failedBullTrap or (priceC < priceC[1] and priceC[1] > priceC[2] and high > high[1] and macdBear) or (priceC > orbQ3H and priceC < orbH and macdBear))
+    if potBearRev and not potBearRev[1]
+        revReason = failedBullTrap ? "Failed Bull Trap" : priceC > orbQ3H ? "Q4 Rejection (Strong Resistance)" : "Bearish Momentum Shift"
+        label.new(bar_index, high, "🔄 REVERSAL\nDOWN", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, tooltip="BEARISH REVERSAL DETECTED\n\nReason: " + revReason + "\n\n⚠️ LONGS: Consider exit\n✅ SHORTS: Potential entry")
+
+// Function to detect fake breakout conditions
+detectFakeBreakouts(bool orbComp, float priceC, float orbH, float orbL, bool longWrongQuad, bool shortWrongQuad, bool abvVWAP, bool highVol, int buyScr, int sellScr) =>
+    nearThresh = syminfo.mintick * 5
+    orbBrokenHighLong = orbComp and priceC > orbH
+    orbBrokenLowShort = orbComp and priceC < orbL
+    orbNearHighLong = orbComp and priceC > (orbH - nearThresh) and priceC <= orbH
+    orbNearLowShort = orbComp and priceC < (orbL + nearThresh) and priceC >= orbL
+    
+    // Long fake breakout conditions
+    fakeLong_WrongQuad = (orbBrokenHighLong or orbNearHighLong) and longWrongQuad
+    fakeLong_BelowVWAP = (orbBrokenHighLong or orbNearHighLong) and not abvVWAP
+    fakeLong_LowVol = (orbBrokenHighLong or orbNearHighLong) and not highVol
+    fakeLong_BearBias = (orbBrokenHighLong or orbNearHighLong) and (buyScr < sellScr)
+    fakeLong_WeakScore = (orbBrokenHighLong or orbNearHighLong) and buyScr < 5
+    fakeLong_Multi = (orbBrokenHighLong or orbNearHighLong) and ((longWrongQuad ? 1 : 0) + (not abvVWAP ? 1 : 0) + (not highVol ? 1 : 0) + (buyScr < sellScr ? 1 : 0)) >= 2
+    
+    // Short fake breakout conditions
+    fakeShort_WrongQuad = (orbBrokenLowShort or orbNearLowShort) and shortWrongQuad
+    fakeShort_AboveVWAP = (orbBrokenLowShort or orbNearLowShort) and abvVWAP
+    fakeShort_LowVol = (orbBrokenLowShort or orbNearLowShort) and not highVol
+    fakeShort_BullBias = (orbBrokenLowShort or orbNearLowShort) and (sellScr < buyScr)
+    fakeShort_WeakScore = (orbBrokenLowShort or orbNearLowShort) and sellScr < 5
+    fakeShort_Multi = (orbBrokenLowShort or orbNearLowShort) and ((shortWrongQuad ? 1 : 0) + (abvVWAP ? 1 : 0) + (not highVol ? 1 : 0) + (sellScr < buyScr ? 1 : 0)) >= 2
+    
+    fakeLongDetected = fakeLong_Multi or (fakeLong_WrongQuad and fakeLong_BelowVWAP)
+    fakeShortDetected = fakeShort_Multi or (fakeShort_WrongQuad and fakeShort_AboveVWAP)
+    
+    [fakeLongDetected, fakeShortDetected, orbNearHighLong, orbNearLowShort, fakeLong_WrongQuad, fakeLong_BelowVWAP, fakeLong_LowVol, fakeLong_BearBias, fakeLong_WeakScore, fakeShort_WrongQuad, fakeShort_AboveVWAP, fakeShort_LowVol, fakeShort_BullBias, fakeShort_WeakScore]
+
+
+
+// ================================================================================================
+// HELPER FUNCTIONS
+// ================================================================================================
+// Using TradingView's built-in ta.dmi() for ADX calculation
+
+// ================================================================================================
+// PART 1: SETTINGS
+// ================================================================================================
+
+// Opening Range Settings (Mark Fisher)
+// ORB-Specific Session Times (Fisher: First 30-60 min of Regular Market Hours ONLY)
+// Fisher: ORB builds during FIRST 30-60 minutes when institutions arrive (9:30 AM ET)
+orbMode = input.string("RTH Fixed", "ORB Mode", options=["RTH Fixed", "ETH Rolling"], group="ORB Settings", 
+         tooltip="RTH Fixed: Classic Fisher ORB at market open (9:30 AM ET)\nETH Rolling: Build ORB at any session start (pre/post market)")
+
+// RTH Fixed Time (Fisher's method - 9:30 AM ET)
+// We now use explicit NY time detection, so this input is less critical but kept for custom overrides
+orbRthStart = input.int(930, "RTH ORB Start (NY Time)", minval=0, maxval=2359, group="ORB Settings", 
+              tooltip="Standard: 9:30 AM ET (Market Open)\nSet to 930 for standard ORB.")
+
+// Pre-Market Data Option (User Request)
+usePreMarketForORB = input.bool(false, "Include 8:30 AM ET Econ Data?", group="ORB Settings",
+                     tooltip="If TRUE, ORB starts at 8:30 AM ET to capture economic data volatility.\nIf FALSE, starts at 9:30 AM ET (Standard Market Open).")
+
+// ETH Session Times (for ETH Rolling mode only)
+orbEthStart = input.int(1700, "ETH ORB Start (HHMM)", minval=0, maxval=2359, group="ORB Settings", 
+              tooltip="ETH Rolling mode: Set to session start time\n\nCommon times:\n• 1700 (5 PM CT) = Evening session\n• 0000 (Midnight) = Overnight session\n• 0600 (6 AM CT) = Pre-market\n\nORB builds at this time each day")
+
+// ORB Period Length
+orbMinutes = input.int(30, "ORB Period (minutes)", minval=15, maxval=120, group="ORB Settings", 
+             tooltip="Fisher recommends:\n• 30 min for active markets (ES/NQ)\n• 60 min for slower markets")
+orbBreakoutTicks = input.int(2, "Breakout Confirmation (ticks)", minval=0, maxval=10, group="ORB Settings", tooltip="Ticks above/below ORB to confirm")
+orbTargetMultiplier = input.float(2.0, "Target Multiplier", minval=1.0, maxval=5.0, step=0.5, group="ORB Settings", tooltip="Target = ORB range × multiplier")
+
+// Risk Management (Account-Based - Fisher, Brooks, Raschke)
+accountSize = input.float(10000.0, "Account Size ($)", minval=1000.0, maxval=1000000.0, step=1000.0, group="Risk Management", tooltip="Your trading account size")
+maxRiskPercent = input.float(1.0, "Max Risk Per Trade (%)", minval=0.1, maxval=5.0, step=0.1, group="Risk Management", tooltip="Fisher/Brandt: 0.5-1% for small accounts, 1-2% for larger")
+useTightStops = input.bool(true, "Use Tight Stops (Recommended)", group="Risk Management", tooltip="TIGHT STOPS (✅ Recommended):\n• Long: Just below ORB High\n• Short: Just above ORB Low\n• Risk: 5-8 points\n• Better R:R (3:1 to 5:1)\n• Raschke/Crabel/Brooks method\n• Exit if price re-enters range\n\nWIDE STOPS (Traditional):\n• Long: Below ORB Low\n• Short: Above ORB High\n• Risk: 18-20 points\n• R:R: ~2:1\n• Fisher's original method\n• More room to breathe")
+
+// Contract Multiplier - works for ANY futures contract
+contractMultiplier = input.float(5.0, "Contract Multiplier ($/point)", minval=0.1, maxval=1000.0, step=0.5, group="Risk Management", tooltip="Dollar value per point move\n\nCommon values:\n• MES: $5/pt\n• ES: $50/pt\n• MNQ: $2/pt\n• NQ: $20/pt\n• RTY: $50/pt\n• YM: $5/pt\n\nSet to match YOUR contract")
+
+minRiskReward = input.float(1.8, "Minimum Risk:Reward", minval=1.0, maxval=5.0, step=0.1, group="Risk Management", tooltip="Minimum 1.8:1 (allows 2× ORB trades with tick offsets)")
+maxDailyLoss = input.float(2.0, "Max Daily Loss (%)", minval=1.0, maxval=5.0, step=0.5, group="Risk Management", tooltip="Brandt: Stop trading after hitting daily loss limit")
+maxConsecutiveLosses = input.int(3, "Max Consecutive Losses", minval=2, maxval=5, group="Risk Management", tooltip="Stop trading after X losses in a row")
+
+// Scale-In Settings (Schwager: "Pyramid on strength")
+enableScaleIn = input.bool(false, "Enable Scale-In", group="Risk Management", tooltip="Schwager: Add to winners, not losers")
+scaleInPercent = input.float(50.0, "Initial Position Size (%)", minval=25.0, maxval=75.0, step=5.0, group="Risk Management", tooltip="First entry = X% of full position. Add rest on pullback/confirmation.")
+
+// Calculate max stop loss based on account size and risk %
+maxRiskDollars = accountSize * (maxRiskPercent / 100)
+maxStopLossPoints = maxRiskDollars / contractMultiplier
+
+// Volume Settings (Critical for breakout confirmation!)
+// PROFESSIONAL SETTINGS: These settings prioritize QUALITY over quantity
+// Fisher: "Never take breakouts on low volume" - we wait for institutional confirmation
+volumeLookback = input.int(20, "Volume Average Period", minval=5, maxval=100, group="Volume Settings", tooltip="Period for average volume calculation")
+volumeMultiplierMorning = input.float(1.10, "Volume Multiplier (Morning)", minval=0.8, maxval=3.0, step=0.05, group="Volume Settings", tooltip="9:30-11:00 AM: Requires 1.10× avg (or 0.94× over 3 bars)\nStrict = Quality setups only")
+volumeMultiplierMidday = input.float(1.00, "Volume Multiplier (Midday)", minval=0.8, maxval=3.0, step=0.05, group="Volume Settings", tooltip="11:00 AM-3:00 PM: Requires 1.00× avg (or 0.85× over 3 bars)\nAverage volume = minimum for lunch trades")
+volumeMultiplierPower = input.float(1.10, "Volume Multiplier (Power Hour)", minval=0.8, maxval=3.0, step=0.05, group="Volume Settings", tooltip="3:00-4:00 PM: Requires 1.10× avg (or 0.94× over 3 bars)")
+volumeSpikeMultiplier = input.float(2.0, "Volume Spike Multiplier", minval=1.5, maxval=5.0, step=0.5, group="Volume Settings", tooltip="Climax volume = X times average (Brooks recommends 2×)")
+
+// Sniper Mode Settings (Premium)
+useSniperMode = input.bool(true, "Use Sniper Mode (15s)", group="Sniper Mode", tooltip="Requires PREMIUM. Waits for 15-second micro-breakout to confirm entry.")
+// Dynamic Sniper Timeframe (proportional to chart timeframe)
+// 1-min chart → 15s sniper, 5-min chart → 1-min sniper, 15-min chart → 5-min sniper
+sniperTimeframe = timeframe.period == "1" ? "15" : 
+                  timeframe.period == "5" ? "1" :
+                  timeframe.period == "15" ? "5" :
+                  timeframe.period == "3" ? "15" :
+                  "15"  // fallback
+
+// Timezone Selection
+timezone = input.string("America/Chicago", "Timezone", options=["America/New_York", "America/Chicago"], group="Session Times", tooltip="NY=Eastern, Chicago=Central")
+
+// Session Times - Electronic Trading Hours (ETH) - nearly 24h except 1hr maintenance
+// CME ES/NQ: Sunday 5:00 PM - Friday 4:00 PM (CT) with daily maintenance 4:00-5:00 PM
+rthStart = input.int(1700, "Session Start (HHMM)", minval=0, maxval=2359, group="Session Times", tooltip="ETH Start: 5:00 PM CT / 6:00 PM ET")
+rthEnd = input.int(1600, "Session End (HHMM)", minval=0, maxval=2359, group="Session Times", tooltip="ETH End: 4:00 PM CT / 5:00 PM ET (before maintenance)")
+exitTime = input.int(1445, "Force Exit Time (HHMM)", minval=0, maxval=2359, group="Session Times", tooltip="Close all: 2:45 PM CT / 3:45 PM ET")
+
+// Strategy Toggles
+enableORB = input.bool(true, "Opening Range Breakout", group="Strategies")
+enableVWAP = input.bool(true, "VWAP Mean Reversion", group="Strategies")
+enablePreviousDayLevels = input.bool(true, "Previous Day Levels", group="Strategies")
+
+// Visual Display Toggles - Key levels ON by default
+showVWAPBands = input.bool(false, "Show VWAP Bands (±σ)", group="Display Options", tooltip="Show VWAP standard deviation bands")
+showEMAs = input.bool(false, "Show EMAs (9/21/50)", group="Display Options", tooltip="Show trend EMAs")
+showPivots = input.bool(false, "Show Pivot Levels (R1/R2/S1/S2)", group="Display Options", tooltip="Show pivot point levels")
+showHolyGrailEMA = input.bool(false, "Show EMA 20 (Holy Grail)", group="Display Options", tooltip="Show EMA 20 for Holy Grail strategy")
+showORBLines = input.bool(true, "Show ORB High/Low Lines", group="Display Options", tooltip="ORB lines - PRIMARY strategy (Fisher)")
+showPrevDayLines = input.bool(true, "Show Previous Day High/Low + Today High/Low", group="Display Options", tooltip="PDH/PDL (yesterday) + TODAY HIGH/LOW (current day) - Key support/resistance levels")
+showTradeLines = input.bool(true, "Show Entry/Stop/Target Lines (with labels)", group="Display Options", tooltip="Show trade entry, stop, and target lines only when signals fire")
+
+// ================================================================================================
+// PART 2: TIME & SESSION DETECTION
+// ================================================================================================
+
+// ORB timing variables (must be declared before use in isORBSession)
+var int orbStartTime = na
+var int orbEndTime = na
+// Track last update date to detect missed sessions
+var int orbLastUpdateDate = 0
+
+// Initialize ORB times immediately if not set (defensive fix for data gaps/timeframe switches)
+if na(orbStartTime) or na(orbEndTime)
+    orbStartTime := orbMode == "RTH Fixed" ? orbRthStart : orbEthStart
+    startHour = math.floor(orbStartTime / 100)
+    startMin = orbStartTime % 100
+    totalMinutes = startHour * 60 + startMin + orbMinutes
+    endHour = math.floor(totalMinutes / 60)
+    endMin = totalMinutes % 60
+    orbEndTime := endHour * 100 + endMin
+    log.info("🔧 ORB Times Initialized | Start: {0} | End: {1} | Mode: {2}", orbStartTime, orbEndTime, orbMode)
+
+currentHour = hour(time, timezone)
+currentMinute = minute(time, timezone)
+currentTimeHHMM = currentHour * 100 + currentMinute
+
+// Calculate NY Time for consistent logic (User Requirement: "Default to EST")
+nyHour = hour(time, "America/New_York")
+nyMinute = minute(time, "America/New_York")
+nyTimeHHMM = nyHour * 100 + nyMinute
+
+// Main trading session (Electronic Trading Hours - nearly 24h, wraps overnight)
+// If start > end (e.g., 1700 to 1600 next day), session is active UNLESS in the maintenance window
+isRTH = rthStart > rthEnd ? (currentTimeHHMM >= rthStart or currentTimeHHMM < rthEnd) : (currentTimeHHMM >= rthStart and currentTimeHHMM < rthEnd)
+isPowerHour = currentTimeHHMM >= 1400 and currentTimeHHMM < 1500  // 2-3 PM CT / 3-4 PM ET
+isForceExit = currentTimeHHMM >= exitTime and currentTimeHHMM < rthEnd
+
+// PROFESSIONAL HOURS: Use TradingView's built-in session detection
+// session.ismarket = Regular Trading Hours (RTH) for the instrument
+// session.ispremarket = Pre-market hours
+// session.ispostmarket = Post-market hours
+isRegularHours = session.ismarket
+isPreMarket = session.ispremarket
+isPostMarket = session.ispostmarket
+
+// ORB Session (Regular Market Hours only - configurable)
+// CRITICAL FIX: Use NY Time (nyTimeHHMM) to match the 930/830 EST constants
+// This ensures 9:30 EST triggers correctly even if chart is in CST (where it's 8:30)
+isORBSession = not na(orbStartTime) and not na(orbEndTime) and nyTimeHHMM >= orbStartTime and nyTimeHHMM < orbEndTime
+
+// LOGGING: Force exit time
+if isForceExit and not isForceExit[1]
+    log.warning("⏰ FORCE EXIT TIME | Close all positions NOW | Time: {0} | Price: {1}", currentTimeHHMM, close)
+
+// Session backgrounds
+bgcolor(isRTH ? color.new(color.green, 97) : na, title="Trading Session")
+bgcolor(isORBSession ? color.new(color.blue, 97) : na, title="ORB Session")
+bgcolor(isPowerHour ? color.new(color.orange, 95) : na, title="Power Hour")
+
+// New trading session detection (resets at ORB session start)
+var int lastSessionDate = 0
+var int lastSessionTime = 0
+currentDate = dayofmonth(time, timezone)
+dayOfWeek = dayofweek(time, timezone)
+
+// ================================================================================================
+// ROBUST SESSION DETECTION (Timezone Independent - NY Time)
+// ================================================================================================
+// User Directive: "Use TradingView functions... default to EST... irrespective of timezone"
+
+// Define the Session String based on user choice (Standard 9:30 or Pre-Market 8:30)
+// Format: "HHMM-1600" (End of RTH)
+rthSessionString = usePreMarketForORB ? "0830-1600" : "0930-1600"
+
+// Check if we are in the NY Session (returns non-na value if true)
+// This works regardless of the user's local chart timezone (CST, PST, etc.)
+inRthSessionNY = not na(time(timeframe.period, rthSessionString, "America/New_York"))
+
+// Detect new session based on ORB mode
+// RTH Fixed: Trigger when NY RTH Session starts (State Transition) OR at Futures Open (18:00 EST)
+isNewDay = false
+if orbMode == "RTH Fixed"
+    // Trigger on rising edge of NY Session OR at 18:00 EST (Futures Open)
+    // This ensures we catch the "New Day" for futures even if ORB is later
+    isNewDay := (inRthSessionNY and not (inRthSessionNY[1] == true)) or (nyTimeHHMM == 1800 and nyTimeHHMM[1] != 1800)
+else
+    // ETH Mode: Trigger at start of ETH session (usually 18:00 EST)
+    isNewDay := isORBSession and not (isORBSession[1] == true)
+
+// Double-check safety: If we missed the exact minute, check if we are in session and date changed
+// (Already handled by state transition above, but keeping for robustness)
+if orbMode == "RTH Fixed" and not isNewDay
+    isNewDay := inRthSessionNY and currentDate != lastSessionDate[1]
+
+// Session Start (for cleanup) - Sync with New Day
+isSessionStart = isNewDay
+
+if isNewDay
+    lastSessionDate := currentDate
+    lastSessionTime := currentTimeHHMM
+    orbLastUpdateDate := currentDate // Reset ORB update date for the new day
+    log.info("🌅 NEW TRADING SESSION | Date: {0} | Time: {1} | Account: ${2} | Max Risk: ${3} ({4}pts) | ORB Mode: {5} | ORB Period: {6} min", currentDate, currentTimeHHMM, accountSize, maxRiskDollars, maxStopLossPoints, orbMode, orbMinutes)
+
+// ================================================================================================
+// PART 2A: INTRADAY MARKET CONDITION ASSESSMENT (Fisher, Brooks, Raschke)
+// ================================================================================================
+// What actually matters for MES/NQ intraday trading (not long-term metrics!)
+
+// Daily ATR vs 20-day average (Williams: "Volatility is your friend")
+atrDaily = request.security(syminfo.tickerid, "D", ta.atr(14), lookahead=barmerge.lookahead_off)
+atrAvg = request.security(syminfo.tickerid, "D", ta.sma(ta.atr(14), 20), lookahead=barmerge.lookahead_off)
+atr = ta.atr(14)  // Intraday ATR for label spacing
+atrRatio = atrAvg > 0 ? (atrDaily / atrAvg) * 100 : 100
+highVolatilityDay = atrRatio > 120 // Today's ATR is 20%+ above average
+lowVolatilityDay = atrRatio < 80 // Today's ATR is 20%+ below average
+
+// Opening Gap (Williams: "Opening price is key")
+yesterdayClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_off)
+todayOpen = request.security(syminfo.tickerid, "D", open, lookahead=barmerge.lookahead_off)
+gapPercent = yesterdayClose > 0 ? ((todayOpen - yesterdayClose) / yesterdayClose) * 100 : 0
+gapUp = gapPercent > 0.3 // Gap up > 0.3%
+gapDown = gapPercent < -0.3 // Gap down > 0.3%
+bigGap = math.abs(gapPercent) > 0.5 // Large gap (expect volatile day)
+
+// Daily Trend Strength (ADX) - Raschke: "Trade WITH the trend"
+[dailyDIPlus, dailyDIMinus, dailyADX] = request.security(syminfo.tickerid, "D", ta.dmi(14, 14), lookahead=barmerge.lookahead_off)
+dailyTrending = dailyADX > 25 // Strong trend on daily = better intraday follow-through
+dailyRanging = dailyADX < 20 // Weak trend = expect choppy intraday
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTI-TIMEFRAME VOLUME ANALYSIS - Professional Approach
+// ═══════════════════════════════════════════════════════════════════════════════
+// Problem: 5-min volume is too noisy (one bar huge, next bar tiny)
+// Solution: Check volume on HIGHER TIMEFRAME (15-min) for institutional confirmation
+// This is how professionals confirm breakouts - look at bigger picture
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HYBRID VOLUME SYSTEM (Context-Aware + Time-of-Day Adjusted)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Professional approach: Volume requirements adapt to CURRENT market activity AND time of day
+// Fisher: "Judge volume relative to recent bars, not daily average"
+// Raschke: "Opening hour ≠ lunch hour ≠ closing hour"
+
+// CALL VOLUME ANALYSIS FUNCTION
+[volumeZScore, avgVolume, higherTFVolume, higherTFAvgVolume, ltfVolumeSpike, volumeMultiplier, higherTFVolumeConfirmed, currentTFVolumeConfirmed, highVolumeORBLong, highVolumeORBShort, highVolume, volumeSpike, lowVolume, recentAvgVolume, volume3BarAvg, ltfClose, priceNotCollapsing, priceNotSurging, ltfTimeframe, htfVolRatioCheck, minHTFThreshold, htfVolRising, htfSafeToTrade] = f_analyzeVolume(volume, close, syminfo.tickerid, timeframe.period, currentTimeHHMM, volumeLookback, volumeMultiplierMorning, volumeMultiplierMidday, volumeMultiplierPower, volumeSpikeMultiplier)
+
+// Market Condition for TODAY's Trading
+// Fisher: High volume + trend = good. Low volume + chop = bad.
+marketFavorable = (highVolume or bigGap) and not lowVolatilityDay
+marketCondition = marketFavorable ? "✅ ACTIVE" : dailyRanging ? "⚠️ CHOPPY" : "📊 NORMAL"
+marketColor = marketFavorable ? color.lime : dailyRanging ? color.orange : color.gray
+
+// TIME-OF-DAY FILTER (Raschke's Taylor Trading Technique)
+// Prime trading windows - avoid lunchtime chop!
+morningSession = currentTimeHHMM >= 930 and currentTimeHHMM < 1130  // Best momentum
+lunchChop = currentTimeHHMM >= 1130 and currentTimeHHMM < 1400      // AVOID (low probability)
+afternoonSession = currentTimeHHMM >= 1400 and currentTimeHHMM < 1600  // Trend continuation
+
+// PROFESSIONAL RULE: Only trade pattern strategies during RTH (institutional hours)
+validTimeWindow = isRegularHours and (morningSession or afternoonSession)
+
+// ================================================================================================
+// PART 3: OPENING RANGE BREAKOUT (Mark Fisher)
+// ================================================================================================
+// CRITICAL: Entry is at BREAKOUT LEVEL, not current price!
+// You WAIT for price to break ORB High/Low, THEN enter at that level
+
+var float orbHigh = na
+var float orbLow = na
+var float orbQ1High = na
+var float orbQ2High = na
+var float orbQ3High = na
+var bool orbComplete = false
+var line orbHighLine = na
+var line orbLowLine = na
+var line orbTargetLongLine = na
+var line orbTargetShortLine = na
+var box orbRangeBox = na  // Shaded box between ORB High/Low
+
+// QUADRANTS: Divide PREVIOUS DAY'S RANGE into 4 equal zones (INSTITUTIONAL METHOD)
+// Professional traders use PDH/PDL quadrants to understand where institutions are positioned
+// Opening price location tells you the bias for the day
+var line quadrant3Line = na  // 75% level (top of Q3)
+var line quadrant2Line = na  // 50% level (midpoint - Q2/Q3 boundary)
+var line quadrant1Line = na  // 25% level (top of Q1)
+var float q3Level = na
+var float q2Level = na
+var float q1Level = na
+
+// Quadrant BOXES (shaded areas)
+var box q4Box = na  // 75-100% (Strong Bull)
+var box q3Box = na  // 50-75% (Bull)
+var box q2Box = na  // 25-50% (Bear)
+var box q1Box = na  // 0-25% (Strong Bear)
+
+// Previous Day Levels (PDH/PDL/PDC) - Needed for quadrants BEFORE ORB calculation
+[prevDayHigh, prevDayLow, prevDayClose] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead=barmerge.lookahead_off)
+var float pdh = na
+var float pdl = na
+var float pdc = na
+var line pdhLine = na
+var line pdlLine = na
+var line pdcLine = na
+var label pdhLabel = na
+var label pdlLabel = na
+var label pdcLabel = na
+
+// Initialize PDH/PDL on new day (must happen early for quadrant calculations)
+if isNewDay
+    pdh := prevDayHigh
+    pdl := prevDayLow
+    pdc := prevDayClose
+    
+// Today's High/Low tracking (updates in real-time during the day)
+var float todayHigh = na
+var float todayLow = na
+var line todayHighLine = na
+var line todayLowLine = na
+var label todayHighLabel = na
+var label todayLowLabel = na
+
+// Persistent Quadrant Lines & Labels (Q1-Q4)
+var line q3Line = na
+var line q2Line = na
+var line q1Line = na
+var label q3Label = na
+var label q2Label = na
+var label q1Label = na
+var int orbCompleteBarIndex = na  // Store bar index when ORB completes
+
+
+// Store active trade lines (delete old ones before creating new)
+// Separate lines for LONG and SHORT so both can be visible simultaneously
+var line activeEntryLineLong = na
+var line activeStopLineLong = na
+var line activeTargetLineLong = na
+var line activeEntryLineShort = na
+var line activeStopLineShort = na
+var line activeTargetLineShort = na
+
+// Initialize ORB times immediately if not set (defensive fix for data gaps/timeframe switches)
+// MOVED TO TOP OF SCRIPT (Part 2) to ensure availability for session detection
+// UPDATE: For RTH Fixed, we now rely on NY Session detection, but we still need orbStartTime for display/logic
+if na(orbStartTime) or na(orbEndTime)
+    if orbMode == "RTH Fixed"
+        // Convert NY Start Time (930 or 830) to User's Timezone for display/consistency
+        // Note: This is an approximation for display. The core logic uses inRthSessionNY.
+        // FIX: Respect user input 'orbRthStart' unless Pre-Market override is active
+        orbStartTime := usePreMarketForORB ? 830 : orbRthStart // NY Time
+    else
+        orbStartTime := orbEthStart
+        
+    startHour = math.floor(orbStartTime / 100)
+    startMin = orbStartTime % 100
+    totalMinutes = startHour * 60 + startMin + orbMinutes
+    endHour = math.floor(totalMinutes / 60)
+    endMin = totalMinutes % 60
+    orbEndTime := endHour * 100 + endMin
+    log.info("🔧 ORB Times Initialized | Start: {0} (NY) | End: {1} (NY) | Mode: {2} | Chart Time: {3} | NY Time: {4}", orbStartTime, orbEndTime, orbMode, currentTimeHHMM, nyTimeHHMM)
+
+// Reset ORB at start of new day/session
+if isNewDay
+    // Fisher Mode: ORB builds at FIXED time (9:30 AM ET = 8:30 AM CT)
+    // ETH Mode: ORB builds at session start (rolling)
+    // FIX: Respect user input 'orbRthStart' unless Pre-Market override is active
+    if orbMode == "RTH Fixed"
+        orbStartTime := usePreMarketForORB ? 830 : orbRthStart
+    else
+        orbStartTime := orbEthStart
+    
+    // Calculate ORB end time (convert HHMM to minutes, add, convert back)
+    startHour = math.floor(orbStartTime / 100)
+    startMin = orbStartTime % 100
+    totalMinutes = startHour * 60 + startMin + orbMinutes
+    endHour = math.floor(totalMinutes / 60)
+    endMin = totalMinutes % 60
+    orbEndTime := endHour * 100 + endMin
+    
+    orbHigh := high
+    orbLow := low
+    orbComplete := false
+    
+    // Reset Today's High/Low
+    todayHigh := high
+    todayLow := low
+    
+    // Delete old lines (ORB and trade lines from previous day)
+    if not na(orbHighLine)
+        line.delete(orbHighLine)
+        line.delete(orbLowLine)
+        line.delete(orbTargetLongLine)
+        line.delete(orbTargetShortLine)
+    orbHighLine := na
+    orbLowLine := na
+    orbTargetLongLine := na
+    orbTargetShortLine := na
+
+    // Delete ORB range box
+    if not na(orbRangeBox)
+        box.delete(orbRangeBox)
+    orbRangeBox := na
+    
+    // Delete quadrant lines and boxes
+    if not na(quadrant3Line)
+        line.delete(quadrant3Line)
+        line.delete(quadrant2Line)
+        line.delete(quadrant1Line)
+    if not na(q4Box)
+        box.delete(q4Box)
+        box.delete(q3Box)
+        box.delete(q2Box)
+        box.delete(q1Box)
+    quadrant3Line := na
+    quadrant2Line := na
+    quadrant1Line := na
+    q4Box := na
+    q3Box := na
+    q2Box := na
+    q1Box := na
+    q3Level := na
+    q2Level := na
+    q1Level := na
+    
+    // Delete Today's High/Low lines and labels
+    if not na(todayHighLine)
+        line.delete(todayHighLine)
+        line.delete(todayLowLine)
+    if not na(todayHighLabel)
+        label.delete(todayHighLabel)
+        label.delete(todayLowLabel)
+    todayHighLine := na
+    todayLowLine := na
+    todayHighLabel := na
+    todayLowLabel := na
+    
+    // Delete trade lines too
+    if not na(activeEntryLineLong)
+        line.delete(activeEntryLineLong)
+        line.delete(activeStopLineLong)
+        line.delete(activeTargetLineLong)
+    if not na(activeEntryLineShort)
+        line.delete(activeEntryLineShort)
+        line.delete(activeStopLineShort)
+        line.delete(activeTargetLineShort)
+    activeEntryLineLong := na
+    activeStopLineLong := na
+    activeTargetLineLong := na
+    activeEntryLineShort := na
+    activeStopLineShort := na
+    activeTargetLineShort := na
+
+// Clean up old lines at ETH session start (Sunday evening or daily session open)
+if isSessionStart and not isNewDay
+    // Delete old ORB lines from previous week/day
+    if not na(orbHighLine)
+        line.delete(orbHighLine)
+        line.delete(orbLowLine)
+        line.delete(orbTargetLongLine)
+        line.delete(orbTargetShortLine)
+        orbHighLine := na
+        orbLowLine := na
+        orbTargetLongLine := na
+        orbTargetShortLine := na
+    
+    // Delete ORB range box
+    if not na(orbRangeBox)
+        box.delete(orbRangeBox)
+    orbRangeBox := na
+    
+    // Delete quadrant lines and boxes
+    if not na(quadrant3Line)
+        line.delete(quadrant3Line)
+        line.delete(quadrant2Line)
+        line.delete(quadrant1Line)
+    if not na(q4Box)
+        box.delete(q4Box)
+        box.delete(q3Box)
+        box.delete(q2Box)
+        box.delete(q1Box)
+    quadrant3Line := na
+    quadrant2Line := na
+    quadrant1Line := na
+    q4Box := na
+    q3Box := na
+    q2Box := na
+    q1Box := na
+    
+    // Delete Today's High/Low lines and labels
+    if not na(todayHighLine)
+        line.delete(todayHighLine)
+        line.delete(todayLowLine)
+    if not na(todayHighLabel)
+        label.delete(todayHighLabel)
+        label.delete(todayLowLabel)
+    todayHighLine := na
+    todayLowLine := na
+    todayHighLabel := na
+    todayLowLabel := na
+    
+    // Delete trade lines too
+    if not na(activeEntryLineLong)
+        line.delete(activeEntryLineLong)
+        line.delete(activeStopLineLong)
+        line.delete(activeTargetLineLong)
+    if not na(activeEntryLineShort)
+        line.delete(activeEntryLineShort)
+        line.delete(activeStopLineShort)
+        line.delete(activeTargetLineShort)
+    activeEntryLineLong := na
+    activeStopLineLong := na
+    activeTargetLineLong := na
+    activeEntryLineShort := na
+    activeStopLineShort := na
+    activeTargetLineShort := na
+    
+    log.info("🧹 SESSION START CLEANUP | Removed old lines | Time: {0}", currentTimeHHMM)
+
+// Track if ORB session has actually started (to prevent premature completion at 18:00 EST)
+var bool orbHasStarted = false
+
+if isNewDay
+    orbHasStarted := false
+
+// Build ORB during opening period (only during ORB session hours)
+// CRITICAL FIX: Use NY Time (nyTimeHHMM) to match the 930/830 EST constants
+if not na(orbStartTime) and nyTimeHHMM >= orbStartTime and nyTimeHHMM < orbEndTime and isORBSession
+    orbHasStarted := true
+    orbHigh := math.max(nz(orbHigh), high)
+    orbLow := math.min(nz(orbLow, high), low)
+    orbLastUpdateDate := currentDate
+    orbComplete := false
+
+// Update Today's High/Low in real-time (simple manual tracking - WORKS!)
+var float prevTodayHigh = na
+var float prevTodayLow = na
+todayHigh := math.max(nz(todayHigh, high), high)
+todayLow := math.min(nz(todayLow, low), low)
+
+// Draw/update Today's High/Low lines and labels
+if showPrevDayLines  // Use same toggle as PDH/PDL for consistency
+    bool valuesChanged = todayHigh != prevTodayHigh or todayLow != prevTodayLow or na(todayHighLine)
+    
+    // Update lines when values change OR lines don't exist
+    if valuesChanged
+        // Delete old lines
+        if not na(todayHighLine)
+            line.delete(todayHighLine)
+            line.delete(todayLowLine)
+        
+        // Draw Today's High line (orange - current resistance)
+        todayHighLine := line.new(bar_index, todayHigh, bar_index + 1, todayHigh, color=color.new(color.orange, 20), width=2, style=line.style_solid, extend=extend.right)
+        
+        // Draw Today's Low line (lime - current support)
+        todayLowLine := line.new(bar_index, todayLow, bar_index + 1, todayLow, color=color.new(color.lime, 20), width=2, style=line.style_solid, extend=extend.right)
+        
+        // Update previous values
+        prevTodayHigh := todayHigh
+        prevTodayLow := todayLow
+    
+    // Delete and recreate labels EVERY BAR (so they move to current bar)
+    if not na(todayHighLabel)
+        label.delete(todayHighLabel)
+        label.delete(todayLowLabel)
+    
+    // Always show TODAY HIGH/LOW labels (they move with current bar)
+    todayHighLabel := label.new(bar_index, todayHigh, "TODAY HIGH " + str.tostring(todayHigh, format.mintick), style=label.style_label_left, color=color.new(color.orange, 0), textcolor=color.white, size=size.normal, tooltip="Today's High - Current Resistance\nBrooks: 'Breaking today's high = institutional commitment'")
+    todayLowLabel := label.new(bar_index, todayLow, "TODAY LOW " + str.tostring(todayLow, format.mintick), style=label.style_label_left, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, tooltip="Today's Low - Current Support\nBrooks: 'Breaking today's low = weakness'")
+
+// Mark ORB as complete when time reaches orbEndTime
+// Note: We check >= orbEndTime, not isORBSession, because isORBSession becomes false after orbEndTime
+// CRITICAL FIX: Use NY Time (nyTimeHHMM) to match the 930/830 EST constants
+// FIX: Ensure ORB has actually started before completing (prevents 18:00 EST trigger)
+if not na(orbEndTime) and nyTimeHHMM >= orbEndTime and not orbComplete and orbHasStarted
+    orbComplete := true
+    orbCompleteBarIndex := bar_index  // Save the bar index when ORB completes
+    
+    // Calculate ORB quadrants IMMEDIATELY when ORB completes
+    orbQ1High := orbLow + ((orbHigh - orbLow) * 0.25)  // Bottom 25% (Q1)
+    orbQ2High := orbLow + ((orbHigh - orbLow) * 0.50)  // Midpoint (Q2)
+    orbQ3High := orbLow + ((orbHigh - orbLow) * 0.75)  // Top 75% (Q3)
+
+    // LOG: ORB Completion
+    orbRangeCalc = orbHigh - orbLow
+    
+    // Check for missed session (stale data)
+    if orbLastUpdateDate != currentDate
+        log.error("❌ ORB SESSION MISSED | Current Time: {0} | Start: {1} | End: {2} | Check Timezone/Start Time settings!", currentTimeHHMM, orbStartTime, orbEndTime)
+        // Force update to current bar to avoid using yesterday's data (failsafe)
+        orbHigh := high
+        orbLow := low
+        orbRangeCalc := orbHigh - orbLow
+        log.warning("⚠️ ORB FORCED UPDATE | Using current bar data as fallback")
+
+    log.info("📊 ORB COMPLETE | High: {0} | Low: {1} | Range: {2}pts | Max Stop: {3}pts", orbHigh, orbLow, orbRangeCalc, maxStopLossPoints)
+    
+    // Draw persistent ORB lines (will extend across the day) - ONLY IF ENABLED
+    if na(orbHighLine) and showORBLines
+        // Draw ORB lines - CLEARER with thicker lines
+        orbHighLine := line.new(bar_index, orbHigh, bar_index + 1, orbHigh, color=color.new(color.green, 0), width=2, style=line.style_solid, extend=extend.right)
+        orbLowLine := line.new(bar_index, orbLow, bar_index + 1, orbLow, color=color.new(color.red, 0), width=2, style=line.style_solid, extend=extend.right)
+        
+        // Calculate ORB range
+        orbRange = orbHigh - orbLow
+        orbRangePoints = orbRange / syminfo.mintick
+        
+        // Labels for ORB lines
+        label.new(bar_index, orbHigh, "ORB HIGH " + str.tostring(orbHigh, format.mintick), style=label.style_label_left, color=color.new(color.green, 0), textcolor=color.white, size=size.small, tooltip="Fisher's ORB High | Range: " + str.tostring(orbRangePoints, "#") + " pts")
+        label.new(bar_index, orbLow, "ORB LOW " + str.tostring(orbLow, format.mintick), style=label.style_label_left, color=color.new(color.red, 0), textcolor=color.white, size=size.small, tooltip="Fisher's ORB Low | Range: " + str.tostring(orbRangePoints, "#") + " pts")
+        
+        // Target lines - DASHED for clarity (only if ORB lines are shown)
+        orbTargetLong = orbHigh + (orbRange * orbTargetMultiplier)
+        orbTargetShort = orbLow - (orbRange * orbTargetMultiplier)
+        targetLongProfit = orbTargetLong - orbHigh
+        targetShortProfit = orbLow - orbTargetShort
+        
+        // Target lines - DISABLED: Targets shown in dashboard and labels, lines create clutter
+        // orbTargetLongLine := line.new(bar_index, orbTargetLong, bar_index + 1, orbTargetLong, color=color.new(color.lime, 50), width=1, style=line.style_dashed, extend=extend.right)
+        // orbTargetShortLine := line.new(bar_index, orbTargetShort, bar_index + 1, orbTargetShort, color=color.new(color.fuchsia, 50), width=1, style=line.style_dashed, extend=extend.right)
+        
+        // Target labels - SIMPLIFIED
+        label.new(bar_index, orbTargetLong, "TARGET: " + str.tostring(orbTargetLong, format.mintick), style=label.style_label_left, color=color.new(color.lime, 50), textcolor=color.black, size=size.tiny, tooltip="Long target | +" + str.tostring(targetLongProfit, format.mintick) + " pts")
+        label.new(bar_index, orbTargetShort, "TARGET: " + str.tostring(orbTargetShort, format.mintick), style=label.style_label_left, color=color.new(color.fuchsia, 50), textcolor=color.white, size=size.tiny, tooltip="Short target | +" + str.tostring(targetShortProfit, format.mintick) + " pts")
+        
+        // Draw shaded box between ORB High and ORB Low (makes range visually obvious)
+        orbRangeBox := box.new(bar_index, orbHigh, bar_index + 1, orbLow, border_color=na, bgcolor=color.new(color.blue, 95), extend=extend.right)
+
+// ORB Quadrant lines are drawn using plot() at the end of the script (lines 2214-2216)
+// Q3 (yellow), Q2 (orange), Q1 (red) - these are always visible when ORB completes
+
+
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QUADRANTS: SHADED ZONES - Visual quadrant areas after ORB completes
+// ═══════════════════════════════════════════════════════════════════════════════
+// Draw ONCE when ORB first completes, not every bar (fixed levels)
+if orbComplete and not orbComplete[1] and not na(pdh) and not na(pdl)
+    yesterdayRange = pdh - pdl
+    q3Level := pdl + (yesterdayRange * 0.75)
+    q2Level := pdl + (yesterdayRange * 0.50)
+    q1Level := pdl + (yesterdayRange * 0.25)
+    
+    // Delete old boxes from previous day
+    if not na(q4Box)
+        box.delete(q4Box)
+        box.delete(q3Box)
+        box.delete(q2Box)
+        box.delete(q1Box)
+    
+    // Draw FIXED quadrant zones based on PDH/PDL (drawn once, extended right)
+    // Q4: 75-100% (Strong Bull Zone - Green)
+    q4Box := box.new(bar_index, pdh, bar_index + 1, q3Level, 
+                     border_color=na, 
+                     bgcolor=color.new(color.lime, 85), 
+                     extend=extend.right,
+                     text="Q4 BULL", 
+                     text_color=color.lime, 
+                     text_size=size.small)
+    
+    // Q3: 50-75% (Bull Zone - Light Green)
+    q3Box := box.new(bar_index, q3Level, bar_index + 1, q2Level, 
+                     border_color=na, 
+                     bgcolor=color.new(color.green, 90), 
+                     extend=extend.right,
+                     text="Q3", 
+                     text_color=color.green, 
+                     text_size=size.tiny)
+    
+    // Q2: 25-50% (Bear Zone - Light Red)
+    q2Box := box.new(bar_index, q2Level, bar_index + 1, q1Level, 
+                     border_color=na, 
+                     bgcolor=color.new(color.red, 90), 
+                     extend=extend.right,
+                     text="Q2", 
+                     text_color=color.red, 
+                     text_size=size.tiny)
+    
+    // Q1: 0-25% (Strong Bear Zone - Red)
+    q1Box := box.new(bar_index, q1Level, bar_index + 1, pdl, 
+                     border_color=na, 
+                     bgcolor=color.new(color.red, 85), 
+                     extend=extend.right,
+                     text="Q1 BEAR", 
+                     text_color=color.red, 
+                     text_size=size.small)
+    
+
+// ORB calculations
+orbRange = orbComplete ? orbHigh - orbLow : na
+
+// ORB QUADRANTS (for progressive exits)
+// Variables declared at top of file and updated in ORB block
+
+// Position within ORB quadrants (for Long trades)
+inOrbQ4 = orbComplete and close >= orbQ3High and close <= orbHigh   // Top 25% - Safe
+inOrbQ3 = orbComplete and close >= orbQ2High and close < orbQ3High  // 50-75% - Retest zone
+inOrbQ2 = orbComplete and close >= orbQ1High and close < orbQ2High  // 25-50% - Warning (below mid)
+inOrbQ1 = orbComplete and close >= orbLow and close < orbQ1High     // Bottom 25% - Danger
+breakoutTickSize = syminfo.mintick * orbBreakoutTicks
+
+// QUADRANT POSITION DETECTION (using PREVIOUS DAY'S RANGE)
+// Determines which quadrant price is currently in relative to PDH/PDL
+// This works ALL DAY (not just after ORB completes)
+bool inQ4 = orbComplete and not na(q3Level) and not na(pdh) and close >= q3Level and close <= pdh
+bool inQ3 = orbComplete and not na(q3Level) and not na(q2Level) and close >= q2Level and close < q3Level
+bool inQ2 = orbComplete and not na(q2Level) and not na(q1Level) and close >= q1Level and close < q2Level
+bool inQ1 = orbComplete and not na(q1Level) and not na(pdl) and close >= pdl and close < q1Level
+bool abovePDH = orbComplete and not na(pdh) and close > pdh  // Above previous day's high (very bullish)
+bool belowPDL = orbComplete and not na(pdl) and close < pdl   // Below previous day's low (very bearish)
+// Keep ORB breakout detection separate
+bool aboveORB = orbComplete and close > orbHigh  // Above ORB High (breakout zone)
+bool belowORB = orbComplete and close < orbLow   // Below ORB Low (breakdown zone)
+
+// Quadrant strength assessment
+// Q4/Q3 = Upper half = bullish bias (good for longs)
+// Q2/Q1 = Lower half = bearish bias (good for shorts)
+bool inUpperHalf = inQ4 or inQ3
+bool inLowerHalf = inQ2 or inQ1
+
+// QUADRANT EDGE DETECTION (Fisher: "Strong vs Weak zones")
+// Q4 = Strongest bullish zone (75-100%) - institutions accumulated
+// Q1 = Strongest bearish zone (0-25%) - institutions distributed
+bool inStrongBullZone = inQ4  // Top 25% of range
+bool inStrongBearZone = inQ1  // Bottom 25% of range
+bool nearMidpoint = orbComplete and not na(q2Level) and math.abs(close - q2Level) < (orbRange * 0.10)  // Within 10% of midpoint
+
+// QUADRANT CONFLICT DETECTION (Fisher: "Don't fight the quadrant")
+// Long signal in Q1/Q2 = WEAK setup (price below midpoint, bearish bias)
+// Short signal in Q3/Q4 = WEAK setup (price above midpoint, bullish bias)
+bool longInWrongQuadrant = inLowerHalf and orbComplete  // Long setup but price below midpoint
+bool shortInWrongQuadrant = inUpperHalf and orbComplete  // Short setup but price above midpoint
+
+// QUADRANT CONFIRMATION (Fisher: "Best setups align with quadrant")
+bool longInRightQuadrant = inUpperHalf and orbComplete  // Long setup + price above midpoint ✅
+bool shortInRightQuadrant = inLowerHalf and orbComplete  // Short setup + price below midpoint ✅
+
+// Entry tolerance (how far from entry level is acceptable)
+// Fisher: "Enter AT the breakout level, not after it's run 50 points"
+entryTolerance = 8.0  // Within 8 points ONLY - tight discipline, no chasing
+
+// ENTRY LEVELS (per Fisher's book - entry at breakout, NOT current price!)
+entryLevelLong = orbComplete ? orbHigh + breakoutTickSize : na
+entryLevelShort = orbComplete ? orbLow - breakoutTickSize : na
+
+// STOP LEVELS - MODERN TIGHT STOP APPROACH (Raschke/Crabel/Brooks consensus)
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIGHT STOPS: Place stop just beyond the ORB edge (not opposite level)
+// 
+// LOGIC: If price re-enters the ORB range, the breakout has FAILED
+// - Long breakout above ORB High → Stop just below ORB High
+// - Short breakdown below ORB Low → Stop just above ORB Low
+//
+// BENEFITS:
+// - Better R:R (risk 5-8pts instead of 18-20pts)
+// - Faster exit if wrong (don't give back profits)
+// - Can always re-enter if breakout resumes
+//
+// EXPERTS WHO USE THIS:
+// - Linda Raschke: "Tight stops in fast markets. Exit if it comes back through."
+// - Toby Crabel: "Stop just beyond the opening range edge."
+// - Al Brooks: "Failed breakout = exit immediately."
+// ═══════════════════════════════════════════════════════════════════════════════
+
+stopBuffer = syminfo.mintick * 4  // 4-tick buffer beyond ORB edge
+
+// TIGHT STOPS at ORB edge (Modern approach - better R:R)
+tightStopLong = orbComplete ? orbHigh - stopBuffer : na   // Just below ORB High
+tightStopShort = orbComplete ? orbLow + stopBuffer : na   // Just above ORB Low
+
+// WIDE STOPS at opposite level (Fisher's traditional - more room)
+wideStopLong = orbComplete ? orbLow - stopBuffer : na     // Below ORB Low
+wideStopShort = orbComplete ? orbHigh + stopBuffer : na   // Above ORB High
+
+// Final stop level (useTightStops is set in input settings)
+stopLevelLong = orbComplete ? (useTightStops ? tightStopLong : wideStopLong) : na
+stopLevelShort = orbComplete ? (useTightStops ? tightStopShort : wideStopShort) : na
+
+// Actual stop distance (for display only - shows the actual stop being used)
+actualStopDistance = orbComplete ? (not na(stopLevelLong) ? entryLevelLong - stopLevelLong : math.min(orbRange, maxStopLossPoints)) : na
+
+// TARGET LEVELS - ALWAYS based on ORB RANGE (Fisher's original method)
+// Fisher: "Target is 2× the ORB range, regardless of where you place your stop"
+// This keeps targets reasonable (20-40 points for ES) instead of 100+ points
+targetDistanceFromEntry = orbComplete ? math.min(orbRange, maxStopLossPoints) * orbTargetMultiplier : na
+targetLevelLong = orbComplete ? entryLevelLong + targetDistanceFromEntry : na
+targetLevelShort = orbComplete ? entryLevelShort - targetDistanceFromEntry : na
+
+// Calculate actual R:R (may be better than 2:1 when using quadrant stops!)
+rrLongRaw = orbComplete and not na(stopLevelLong) ? (targetLevelLong - entryLevelLong) / (entryLevelLong - stopLevelLong) : na
+rrShortRaw = orbComplete and not na(stopLevelShort) ? (entryLevelShort - targetLevelShort) / (stopLevelShort - entryLevelShort) : na
+
+// ================================================================================================
+// VOLUME ANALYSIS - Additional Metrics
+// ================================================================================================
+// Volume ratio (for dashboard display)
+volumeRatio = avgVolume > 0 ? volume / avgVolume : 0
+
+// Volume trend (increasing = bullish, decreasing = bearish)
+volumeIncreasing = volume > volume[1] and volume[1] > volume[2]
+volumeDecreasing = volume < volume[1] and volume[1] < volume[2]
+
+// Volume color for visual confirmation
+volumeColor = volumeSpike ? color.new(color.red, 0) : highVolume ? color.new(color.green, 0) : lowVolume ? color.new(color.gray, 50) : color.new(color.blue, 30)
+
+// ================================================================================================
+// PRICE ACTION QUALITY CHECK (Al Brooks: "Strong bars close near their extremes")
+// ================================================================================================
+barRange = high - low
+barBody = math.abs(close - open)
+barBodyPct = barRange > 0 ? (barBody / barRange) * 100 : 0
+closePosition = barRange > 0 ? ((close - low) / barRange) * 100 : 50
+
+// Strong bullish bar: Large body (>50%), closes near high (>60%) - RELAXED for more signals
+strongBullishBar = barBodyPct > 50 and closePosition > 60 and close > open
+
+// Strong bearish bar: Large body (>50%), closes near low (<40%) - RELAXED for more signals
+strongBearishBar = barBodyPct > 50 and closePosition < 40 and close < open
+
+// Weak bar: Small body (<40%) or close in middle = indecision
+weakBar = barBodyPct < 40 or (closePosition > 40 and closePosition < 60)
+
+// ================================================================================================
+// MOMENTUM INDICATORS (Elder: "Price + Momentum must align")
+// ================================================================================================
+// Declare MACD and RSI early so they can be used in pullback detection
+[macdLine, macdSignal, macdHist] = ta.macd(close, 12, 26, 9)
+macdBullish = macdLine > macdSignal and macdHist > 0
+macdBearish = macdLine < macdSignal and macdHist < 0
+rsi = ta.rsi(close, 14)
+rsi2 = ta.rsi(close, 2)  // Larry Connors: 2-period RSI for mean-reversion entries
+
+// 2-Period RSI Extremes (Connors: Mean-Reversion Setup)
+// When RSI(2) < 10 = Oversold extreme → Buy setup
+// When RSI(2) > 90 = Overbought extreme → Sell setup
+rsi2Oversold = rsi2 < 10   // Extreme oversold - bounce expected
+rsi2Overbought = rsi2 > 90  // Extreme overbought - pullback expected
+
+// Momentum confirmation (using helper functions)
+momentumConfirmsLong = checkMomentumLong(macdLine, macdSignal, macdHist, rsi)
+momentumConfirmsShort = checkMomentumShort(macdLine, macdSignal, macdHist, rsi)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTRY WINDOW SYSTEM - Allow volume to confirm AFTER breakout
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROBLEM: Original logic required breakout + volume on SAME bar → missed most trades
+// SOLUTION: State-based entry window
+//   1. Detect when price breaks ORB level (breakout initiated)
+//   2. Open "entry window" for next 10 bars (allows volume to lag)
+//   3. Enter trade when volume confirms within window
+//   4. This matches real-world trading: see breakout → wait for volume → enter
+
+// Track entry window state
+var bool longEntryWindowOpen = false
+var bool shortEntryWindowOpen = false
+var int barsInLongWindow = 0
+var int barsInShortWindow = 0
+var float longEntryWindowPrice = na  // Track price when window opened
+var float shortEntryWindowPrice = na
+var bool longWindowJustExpired = false  // Track if window just closed
+var bool shortWindowJustExpired = false
+
+int maxEntryWindowBars = 3  // Fisher: Volume confirms IMMEDIATELY (3 bars = 15 min max on 5-min chart)
+
+// STEP 1: Detect breakout and open entry window
+// FAST TRIGGER: Open window if 5-min close OR 1-min close breaks level
+breakoutLongTriggered = (close > entryLevelLong) or (ltfClose > entryLevelLong)
+if enableORB and orbComplete and breakoutLongTriggered and not longEntryWindowOpen and not na(entryLevelLong)
+    longEntryWindowOpen := true
+    barsInLongWindow := 0
+    longEntryWindowPrice := close
+    log.info("🚪 LONG Entry Window OPENED | Price: {0} | Entry: {1}", close, entryLevelLong)
+
+breakoutShortTriggered = (close < entryLevelShort) or (ltfClose < entryLevelShort)
+if enableORB and orbComplete and breakoutShortTriggered and not shortEntryWindowOpen and not na(entryLevelShort)
+    shortEntryWindowOpen := true
+    barsInShortWindow := 0
+    shortEntryWindowPrice := close
+    log.info("🚪 SHORT Entry Window OPENED | Price: {0} | Entry: {1}", close, entryLevelShort)
+
+// STEP 2: Count bars in window and close if expired
+if longEntryWindowOpen
+    barsInLongWindow := barsInLongWindow + 1
+    // Log EVERY bar since window is tight (only 3 bars)
+    htfVol = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+    ctfVol = recentAvgVolume > 0 ? volume3BarAvg / recentAvgVolume : 0  // Use RECENT avg (hybrid)
+    priceNow = close
+    priceDrift = priceNow - longEntryWindowPrice
+    priceStatus = priceNotCollapsing ? "HOLDING✅" : "COLLAPSING❌"
+    log.info("📊 LONG Bar {0}/{1} | Price: {2} (drift: {3}pts) | 15-Min HTF: {4}× | 5-Min: {5}× | Price: {6} | Need: {7}× | {8}", barsInLongWindow, maxEntryWindowBars, priceNow, priceDrift, htfVol, ctfVol, priceStatus, volumeMultiplier, highVolumeORBLong ? "CONFIRMED✅" : "WAITING⚠️")
+    if barsInLongWindow > maxEntryWindowBars
+        longEntryWindowOpen := false
+        longWindowJustExpired := true
+        log.info("⏰ LONG Window EXPIRED after {0} bars | Price drifted {1}pts | NO ENTRY", barsInLongWindow, priceDrift)
+        log.info("📋 ORB BREAKOUT MISSED → Looking for alternative INTRADAY setups (Pullback/VWAP/Holy Grail/Turtle Soup)")
+
+if shortEntryWindowOpen
+    barsInShortWindow := barsInShortWindow + 1
+    // Log EVERY bar
+    htfVol = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+    ctfVol = recentAvgVolume > 0 ? volume3BarAvg / recentAvgVolume : 0  // Use RECENT avg (hybrid)
+    priceNow = close
+    priceDrift = shortEntryWindowPrice - priceNow
+    priceStatus = priceNotSurging ? "HOLDING✅" : "SURGING❌"
+    log.info("📊 SHORT Bar {0}/{1} | Price: {2} (drift: {3}pts) | 15-Min HTF: {4}× | 5-Min: {5}× | Price: {6} | Need: {7}× | {8}", barsInShortWindow, maxEntryWindowBars, priceNow, priceDrift, htfVol, ctfVol, priceStatus, volumeMultiplier, highVolumeORBShort ? "CONFIRMED✅" : "WAITING⚠️")
+    if barsInShortWindow > maxEntryWindowBars
+        shortEntryWindowOpen := false
+        shortWindowJustExpired := true
+        log.info("⏰ SHORT Window EXPIRED after {0} bars | Price drifted {1}pts | NO ENTRY", barsInShortWindow, priceDrift)
+        log.info("📋 ORB BREAKDOWN MISSED → Looking for alternative INTRADAY setups (Pullback/VWAP/Holy Grail/Turtle Soup)")
+
+// STEP 3: Check if volume confirms within window (and price hasn't moved too far)
+// ORB REQUIRES STRICT VOLUME: 15-min HTF volume elevated + price not moving against trade
+bool longEntryTriggered = longEntryWindowOpen and highVolumeORBLong and close <= (entryLevelLong + entryTolerance)
+bool shortEntryTriggered = shortEntryWindowOpen and highVolumeORBShort and close >= (entryLevelShort - entryTolerance)
+
+// STEP 4: Log which volume method confirmed
+if longEntryTriggered
+    htfRatio = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+    ctfRatio = avgVolume > 0 ? volume3BarAvg / avgVolume : 0
+    volumeMethod = higherTFVolumeConfirmed ? "15-Min HTF ✅" : "5-Min 3-Bar"
+    log.info("✅ LONG Volume Confirmed ({0}) | Bar: {1}/{2} | 15-Min: {3}× | 5-Min: {4}× | Need: {5}×", 
+             volumeMethod, barsInLongWindow, maxEntryWindowBars, htfRatio, ctfRatio, volumeMultiplier)
+
+if shortEntryTriggered
+    htfRatio = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+    ctfRatio = avgVolume > 0 ? volume3BarAvg / avgVolume : 0
+    volumeMethod = higherTFVolumeConfirmed ? "15-Min HTF ✅" : "5-Min 3-Bar"
+    log.info("✅ SHORT Volume Confirmed ({0}) | Bar: {1}/{2} | 15-Min: {3}× | 5-Min: {4}× | Need: {5}×", 
+             volumeMethod, barsInShortWindow, maxEntryWindowBars, htfRatio, ctfRatio, volumeMultiplier)
+
+// Assign to raw signals (these feed into final validated signals below)
+orbBreakoutLongRaw = longEntryTriggered
+orbBreakdownShortRaw = shortEntryTriggered
+
+// Reset windows on new day
+if isNewDay
+    longEntryWindowOpen := false
+    shortEntryWindowOpen := false
+    barsInLongWindow := 0
+    barsInShortWindow := 0
+    longEntryWindowPrice := na
+    shortEntryWindowPrice := na
+
+// PULLBACK/RETEST LOGIC (Raschke/Fisher: "First pullback after breakout = best entry")
+// Track if breakout occurred, then wait for retest of breakout level
+var bool orbBrokeOutLong = false
+var bool orbBrokeOutShort = false
+var int barsAfterBreakout = 0
+
+// Detect initial breakout
+if orbComplete and close > orbHigh and not orbBrokeOutLong
+    orbBrokeOutLong := true
+    barsAfterBreakout := 0
+if orbComplete and close < orbLow and not orbBrokeOutShort
+    orbBrokeOutShort := true
+    barsAfterBreakout := 0
+
+// Reset on new day
+if isNewDay
+    orbBrokeOutLong := false
+    orbBrokeOutShort := false
+    barsAfterBreakout := 0
+
+// Count bars after breakout
+if orbBrokeOutLong or orbBrokeOutShort
+    barsAfterBreakout := barsAfterBreakout + 1
+
+// ============================================================================
+// RE-ENTRY TRAP DETECTION (Brooks: "Failed breakout = re-entry within 3 bars & 3 points")
+// ENHANCED: Volume Z-Score + Dynamic Threshold (ATR-based)
+// ============================================================================
+// User Issue: "ORB breaks, re-enters within couple points, then trends downwards"
+// This catches the exact trap pattern: break → quick re-entry → reversal
+
+// 1. Calculate Volume Z-Score (Statistical Significance)
+// volumeZScore is now calculated globally (line 340)
+
+// 2. Dynamic Threshold (Adapts to volatility)
+// Research (Raschke/Brooks): Failed breakouts often re-enter range immediately.
+// Threshold needs to be tight enough to catch "no getaway" (Raschke) but loose enough for noise.
+// Updated: 25% of Daily ATR (approx 2-5 pts on ES) with 2.0 pt minimum.
+reEntryThreshold = math.max(2.0, atrDaily * 0.25)
+
+var bool reEnteredAfterBreakoutLong = false
+var bool reEnteredAfterBreakoutShort = false
+
+// SNIPER MODE CONFIRMATION (Premium)
+// Waits for 15-second micro-breakout to confirm entry
+bool sniperBullish = not useSniperMode
+bool sniperBearish = not useSniperMode
+if useSniperMode and orbComplete and not na(orbHigh) and not na(orbLow)
+    [sBull, sBear] = f_getSniperConfirmation(sniperTimeframe, orbHigh, orbLow)
+    sniperBullish := sBull
+    sniperBearish := sBear
+
+
+// Check for re-entry within critical 3-bar window
+if barsAfterBreakout >= 0 and barsAfterBreakout <= 3
+    // LONG TRAP: Broke above ORB high but now CLOSED BACK INSIDE the range
+    // We only flag it if it actually fails the breakout level, not just hovers above it.
+    if orbBrokeOutLong and close < orbHigh
+        // CRITICAL: Differentiate between "Retest" (Low Vol) and "Trap" (High Vol)
+        isConfirmedTrap = volumeZScore > 1.0   // High volume rejection = TRAP (Dangerous)
+        isRetest = volumeZScore < 0            // Low volume pullback = RETEST (Normal)
+        
+        // Only block entries if it's a confirmed trap or we want to be very safe
+        // User requested reducing false positives, so we ONLY block on Confirmed Trap
+        if isConfirmedTrap
+            if not reEnteredAfterBreakoutLong
+                reEnteredAfterBreakoutLong := true
+                log.error("❌ RE-ENTRY TRAP LONG | Bar: {0}/3 | Close: {1} | ORB High: {2} | Vol Z: {3} | BLOCKING ENTRIES", 
+                          barsAfterBreakout, close, orbHigh, volumeZScore)
+                
+                trapReason = "High Vol Rejection (TRAP!)"
+                label.new(bar_index, high, "⚠️ TRAP!\n" + trapReason, style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, tooltip="RE-ENTRY TRAP DETECTED!\n\nReason: " + trapReason + "\n\nPrice crashed back inside range with HIGH VOLUME.\n\n🚫 ENTRIES BLOCKED")
+        else if isRetest
+            log.info("ℹ️ ORB RETEST LONG | Low Volume Pullback | Vol Z: {0} | Safe to trade if bounces", volumeZScore)
+    
+    // SHORT TRAP: Broke below ORB low but now CLOSED BACK INSIDE the range
+    if orbBrokeOutShort and close > orbLow
+        // CRITICAL: Differentiate between "Retest" (Low Vol) and "Trap" (High Vol)
+        isConfirmedTrap = volumeZScore > 1.0   // High volume rejection = TRAP (Dangerous)
+        isRetest = volumeZScore < 0            // Low volume pullback = RETEST (Normal)
+        
+        if isConfirmedTrap
+            if not reEnteredAfterBreakoutShort
+                reEnteredAfterBreakoutShort := true
+                log.warning("⚠️ RE-ENTRY TRAP SHORT | Bar: {0}/3 | Close: {1} | ORB Low: {2} | Vol Z: {3} | BLOCKING ENTRIES",
+                          barsAfterBreakout, close, orbLow, volumeZScore)
+                
+                trapReason = "High Vol Rejection (TRAP!)"
+                label.new(bar_index, low, "⚠️ TRAP!\n" + trapReason, style=label.style_label_up, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, tooltip="RE-ENTRY TRAP DETECTED!\n\nReason: " + trapReason + "\n\nPrice crashed back inside range with HIGH VOLUME.\n\n🚫 ENTRIES BLOCKED")
+        else if isRetest
+            log.info("ℹ️ ORB RETEST SHORT | Low Volume Pullback | Vol Z: {0} | Safe to trade if bounces", volumeZScore)
+
+// If breakout sustained for 3+ bars without re-entry = valid move
+if barsAfterBreakout == 4 and not reEnteredAfterBreakoutLong and orbBrokeOutLong
+    log.info("✅ ORB BREAKOUT LONG SUSTAINED | Held 3 bars above {0}", orbHigh + 3.0)
+if barsAfterBreakout == 4 and not reEnteredAfterBreakoutShort and orbBrokeOutShort
+    log.info("✅ ORB BREAKDOWN SHORT SUSTAINED | Held 3 bars below {0}", orbLow - 3.0)
+
+// Trap Invalidation / Recovery
+// If price re-claims the level with conviction, the trap failed (it was a "bear trap" in a bull breakout)
+// ENHANCED: Multi-timeframe confirmation for higher probability recovery
+// Method 1: Price reclaims level (conservative)
+// Method 2: HTF (15-min) confirms trend + volume spike (aggressive, institutional)
+
+// Fetch 15-min higher timeframe confirmation
+[htfMACDLine, htfMACDSignal, htfMACDHist] = request.security(syminfo.tickerid, "15", ta.macd(close, 12, 26, 9), lookahead=barmerge.lookahead_off)
+htfBullish = htfMACDLine > htfMACDSignal and htfMACDLine > 0
+htfBearish = htfMACDLine < htfMACDSignal and htfMACDLine < 0
+
+// LONG trap clearing conditions
+priceReclaimedLong = close > orbHigh + syminfo.mintick * 2
+htfConfirmsLong = htfBullish and volumeSpike and close > orbHigh
+if reEnteredAfterBreakoutLong and (priceReclaimedLong or htfConfirmsLong)
+    reEnteredAfterBreakoutLong := false
+    clearReason = htfConfirmsLong ? "15-Min HTF Confirm + Volume" : "Price Reclaimed"
+    log.info("✅ LONG TRAP INVALIDATED | {0} | Re-enabling entries", clearReason)
+    label.new(bar_index, low, "✅ TRAP CLEARED\nLONG OK", style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, tooltip="Trap invalidated - " + clearReason + "\n\nBulls regained control. Long entries re-enabled.")
+
+// SHORT trap clearing conditions
+priceReclaimedShort = close < orbLow - syminfo.mintick * 2
+htfConfirmsShort = htfBearish and volumeSpike and close < orbLow
+if reEnteredAfterBreakoutShort and (priceReclaimedShort or htfConfirmsShort)
+    reEnteredAfterBreakoutShort := false
+    clearReason = htfConfirmsShort ? "15-Min HTF Confirm + Volume" : "Price Reclaimed"
+    log.info("✅ SHORT TRAP INVALIDATED | {0} | Re-enabling entries", clearReason)
+    label.new(bar_index, high, "✅ TRAP CLEARED\nSHORT OK", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.black, size=size.normal, tooltip="Trap invalidated - " + clearReason + "\n\nBears regained control. Short entries re-enabled.")
+
+// Reset on new day
+if isNewDay
+    reEnteredAfterBreakoutLong := false
+    reEnteredAfterBreakoutShort := false
+
+// Dynamic trap timeout based on timeframe (Fisher: "Trap reversals last 25-40 minutes")
+// Calculate how many bars = ~30 minutes on current timeframe
+timeframeMinutes = timeframe.in_seconds(timeframe.period) / 60
+targetTrapMinutes = 30  // Fisher's research: most traps resolve within 30 minutes
+barsForTrapTimeout = math.ceil(targetTrapMinutes / timeframeMinutes)
+
+// Clamp to reasonable range (min 2 bars, max 10 bars)
+barsForTrapTimeout := math.max(2, math.min(10, barsForTrapTimeout))
+
+// Block entries while trap is active (but can clear early if price reclaims)
+// Examples: 5-min: 6 bars (30min) | 10-min: 3 bars (30min) | 15-min: 2 bars (30min)
+blockLongDueToReEntry = reEnteredAfterBreakoutLong and barsAfterBreakout <= barsForTrapTimeout
+blockShortDueToReEntry = reEnteredAfterBreakoutShort and barsAfterBreakout <= barsForTrapTimeout
+
+
+// PULLBACK/RETEST ENTRIES: Two types
+// 1. EARLY PULLBACK (2-10 bars after breakout) = First throwback - BEST ODDS
+pullbackEntryLong = detectPullbackLong(orbBrokeOutLong, barsAfterBreakout, low, close, orbHigh, open, macdBullish)
+pullbackEntryShort = detectPullbackShort(orbBrokeOutShort, barsAfterBreakout, high, close, orbLow, open, macdBearish)
+
+// 2. LATE RETEST (anytime during session) = ORB as support/resistance - STILL VALID ALL DAY
+// CRITICAL: Only fires if initial breakout already happened (prevents false signals from noise)
+// Note: Full validation applied after R:R variables calculated (see below after line 820)
+orbRetestLongRaw = detectOrbRetestLong(orbBrokeOutLong, low, close, high, orbHigh, highVolume)
+orbRetestShortRaw = detectOrbRetestShort(orbBrokeOutShort, high, close, low, orbLow, highVolume)
+
+// FAILED BREAKOUT / TRAP DETECTION (Brooks: "Failed breakout = strong reversal")
+// Detect bull/bear traps for fade entries
+failedBreakoutBullTrap = detectFailedBreakoutLong(high[1], high[2], close, orbHigh)
+if failedBreakoutBullTrap
+    label.new(bar_index, high, "⚠️ FAKE\nBREAKOUT", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.black, size=size.small, tooltip="Failed Bull Breakout (Trap)\nPrice broke above ORB High but immediately reversed.\nHigh probability of reversal.")
+
+failedBreakoutBearTrap = detectFailedBreakoutShort(low[1], low[2], close, orbLow)
+if failedBreakoutBearTrap
+    label.new(bar_index, low, "⚠️ FAKE\nBREAKOUT", style=label.style_label_up, color=color.new(color.orange, 0), textcolor=color.black, size=size.small, tooltip="Failed Bear Breakout (Trap)\nPrice broke below ORB Low but immediately reversed.\nHigh probability of reversal.")
+
+// ENTRY QUALITY VALIDATION (ensure good risk:reward and reasonable stops)
+// Note: rrLongRaw and rrShortRaw are already calculated above (lines 809-810)
+
+// Entry quality checks
+goodRRLong = not na(rrLongRaw) and rrLongRaw >= minRiskReward
+goodRRShort = not na(rrShortRaw) and rrShortRaw >= minRiskReward
+stopNotTooWide = actualStopDistance <= maxStopLossPoints
+orbRangeReasonable = orbRange >= 5 and orbRange <= 100
+
+// TIME-OF-DAY EDGE (Raschke: "Best moves happen in first 90 minutes")
+// Use helper function to get edge multiplier and session flags
+[timeOfDayEdge, isMorningSession, isAfternoonSession, isPowerHourSession] = calcTimeOfDayEdge(currentTimeHHMM)
+
+// SNIPER MODE CONFIRMATION (Moved up for trap logic access)
+// See lines 1088+
+
+// ============================================================================
+// ENHANCED VOLUME ANALYSIS (Core Package) - Placed here to access ORB signals
+// ============================================================================
+
+// 1. VOLUME CASCADE (Multi-Timeframe Alignment)
+// Checks if volume is surging across 5m, 15m, AND 1h simultaneously
+// ENHANCED: Use Z-Score for statistical significance
+zScore15m = request.security(syminfo.tickerid, "15", (volume - ta.sma(volume, 20)) / ta.stdev(volume, 20), lookahead=barmerge.lookahead_off)
+zScore1h = request.security(syminfo.tickerid, "60", (volume - ta.sma(volume, 20)) / ta.stdev(volume, 20), lookahead=barmerge.lookahead_off)
+
+// Cascade Requirement: Current TF Z > 2.0, HTF Z > 1.0
+volumeCascade = volumeZScore > 2.0 and zScore15m > 1.0 and zScore1h > 1.0
+
+if volumeCascade and (orbBrokeOutLong or orbBrokeOutShort)
+    log.info("🌊 VOLUME CASCADE DETECTED | 5m/15m/1h Volume All Surging | Institutional Breakout Confirmed")
+
+// 2. ABSORPTION DETECTION (Immediate Trap Warning)
+// High Volume (Z > 2.0) + Small Body (< 30% ATR) = Fighting/Absorption
+bodySize = math.abs(close - open)
+isAbsorption = volumeZScore > 2.0 and bodySize < atrDaily * 0.3 // Fixed: dailyATR -> atrDaily
+
+if isAbsorption and (orbBrokeOutLong or orbBrokeOutShort)
+    log.warning("⚠️ ABSORPTION DETECTED ON BREAKOUT | Vol Z: {0} | Body: {1}pts | Possible Trap!", volumeZScore, bodySize)
+
+
+// FINAL VALIDATED SIGNALS (only fire if entry quality is good AND price action confirms)
+// PROFESSIONAL RULE: ORB signals require RTH hours (Fisher: trade when institutions arrive)
+// OPTION 1: Immediate breakout (first bar after ORB completion)
+// Fisher: "Best entries are within 15-30 min of ORB breakout" 
+// Apply re-entry trap filter to prevent trap entries
+// Apply Sniper Mode filter (if enabled)
+// Target Proximity Filter: Don't signal if >80% to target (chasing)
+distToTargetLong = targetLevelLong - close
+totalMoveLong = targetLevelLong - entryLevelLong
+notTooCloseToTargetLong = distToTargetLong > (totalMoveLong * 0.2)
+
+// High Volume Bypass: If volume is massive (Z > 1.5), we bypass Sniper Mode
+// Rationale: Institutional volume overrides micro-structure weakness
+highVolumeBypass = volumeZScore > 1.5
+
+orbBreakoutLong = orbBreakoutLongRaw and isRegularHours and goodRRLong and stopNotTooWide and orbRangeReasonable and (sniperBullish or highVolumeBypass) and notTooCloseToTargetLong
+// Target Proximity Filter: Don't signal if >80% to target (chasing)
+distToTargetShort = close - targetLevelShort
+totalMoveShort = entryLevelShort - targetLevelShort
+notTooCloseToTargetShort = distToTargetShort > (totalMoveShort * 0.2)
+
+orbBreakdownShort = orbBreakdownShortRaw and isRegularHours and goodRRShort and stopNotTooWide and orbRangeReasonable and (sniperBearish or highVolumeBypass) and notTooCloseToTargetShort
+
+// OPTION 2: Pullback entry (conservative - better entry, less risk)
+// FISHER RULES: Pullback volume can be LIGHTER (accumulation phase)
+// TIME FILTER: Avoid lunchtime chop (11:30-2pm) - Fisher: "Best moves in first 90 min"
+orbPullbackLong = pullbackEntryLong and isRegularHours and validTimeWindow and goodRRLong and stopNotTooWide and orbRangeReasonable
+orbPullbackShort = pullbackEntryShort and isRegularHours and validTimeWindow and goodRRShort and stopNotTooWide and orbRangeReasonable
+
+// OPTION 3: Late retest (all-day - ORB level as support/resistance)
+// TIME FILTER: Also avoid lunchtime chop for retests (low probability window)
+orbRetestLong = orbRetestLongRaw and isRegularHours and validTimeWindow and goodRRLong and stopNotTooWide and orbRangeReasonable
+orbRetestShort = orbRetestShortRaw and isRegularHours and validTimeWindow and goodRRShort and stopNotTooWide and orbRangeReasonable
+
+// Combine: Either immediate breakout OR pullback entry OR late retest
+// Fisher/Raschke: All three are valid ORB entries, just different timing
+orbLongSignal = orbPullbackLong or (orbBreakoutLong and not orbBrokeOutLong) or orbRetestLong  // Include late retest
+orbShortSignal = orbPullbackShort or (orbBreakdownShort and not orbBrokeOutShort) or orbRetestShort
+
+// Track rejected entries (for logging/debugging)
+orbRejectedLong = orbBreakoutLongRaw and not orbBreakoutLong
+orbRejectedShort = orbBreakdownShortRaw and not orbBreakdownShort
+
+// Log rejection reasons (including re-entry trap blocks)
+if orbRejectedLong and blockLongDueToReEntry
+    log.warning("⚠️ ORB LONG ENTRY REJECTED | Reason: Re-entry trap detected (blocked for 10 bars)")
+if orbRejectedShort and blockShortDueToReEntry
+    log.warning("⚠️ ORB SHORT ENTRY REJECTED | Reason: Re-entry trap detected (blocked for 10 bars)")
+
+// False breakout detection (low volume breakout = trap per Fisher)
+orbFalseBreakoutLong = enableORB and orbComplete and close > entryLevelLong and close[1] <= orbHigh and lowVolume
+orbFalseBreakoutShort = enableORB and orbComplete and close < entryLevelShort and close[1] >= orbLow and lowVolume
+
+// LOGGING: Track entry decisions
+if orbBreakoutLong
+    log.info("✅ ORB LONG ENTRY | Price: {0} | Stop: {1}pts | R:R: {2} | Vol: {3}×", close, actualStopDistance, rrLongRaw, volumeRatio)
+    
+if orbBreakdownShort
+    log.info("✅ ORB SHORT ENTRY | Price: {0} | Stop: {1}pts | R:R: {2} | Vol: {3}×", close, actualStopDistance, rrShortRaw, volumeRatio)
+
+if orbRejectedLong
+    rejectMsg = not goodRRLong ? "R:R too low ({0})" : not stopNotTooWide ? "Stop too wide ({0}pts)" : "ORB range bad ({0}pts)"
+    log.warning("⚠️ ORB LONG REJECTED | " + rejectMsg, not goodRRLong ? rrLongRaw : actualStopDistance)
+    
+if orbRejectedShort
+    rejectMsg = not goodRRShort ? "R:R too low ({0})" : not stopNotTooWide ? "Stop too wide ({0}pts)" : "ORB range bad ({0}pts)"
+    log.warning("⚠️ ORB SHORT REJECTED | " + rejectMsg, not goodRRShort ? rrShortRaw : actualStopDistance)
+
+if orbFalseBreakoutLong
+    log.error("❌ FAKE BREAKOUT | Low Volume: {0}× | Price: {1} | DON'T CHASE!", volumeRatio, close)
+    
+if orbFalseBreakoutShort
+    log.error("❌ FAKE BREAKDOWN | Low Volume: {0}× | Price: {1} | DON'T CHASE!", volumeRatio, close)
+
+// ================================================================================================
+// PART 4: VWAP (Using TradingView's built-in ta.vwap)
+// ================================================================================================
+
+// CALL VWAP FUNCTION
+[vwap, vwapUpper1, vwapLower1, vwapUpper2, vwapLower2, vwapBuySignal, vwapSellSignal, vwapRsi2BuySignal, vwapRsi2SellSignal] = f_calcVWAPSignals(close, high, low, isRTH, showVWAPBands, enableVWAP, isRegularHours, rsi2, rsi2Oversold, rsi2Overbought)
+aboveVWAP = close > vwap
+
+// Plot VWAP
+plot(isRTH ? vwap : na, "VWAP", color.new(color.yellow, 0), 2)
+plot(showVWAPBands and isRTH ? vwapUpper1 : na, "VWAP +1σ", color.new(color.orange, 70), 1)
+plot(showVWAPBands and isRTH ? vwapLower1 : na, "VWAP -1σ", color.new(color.orange, 70), 1)
+plot(showVWAPBands and isRTH ? vwapUpper2 : na, "VWAP +2σ", color.new(color.red, 70), 1)
+plot(showVWAPBands and isRTH ? vwapLower2 : na, "VWAP -2σ", color.new(color.green, 70), 1)
+
+// LOGGING: VWAP signals
+if vwapBuySignal and not vwapBuySignal[1]
+    log.info("📉 VWAP MEAN REVERSION LONG | Price below -2σ: {0} | VWAP: {1} | Reversal expected", close, vwap)
+
+if vwapSellSignal and not vwapSellSignal[1]
+    log.info("📈 VWAP MEAN REVERSION SHORT | Price above +2σ: {0} | VWAP: {1} | Reversal expected", close, vwap)
+
+// LOGGING: RSI(2) Extreme signals (Connors)
+if vwapRsi2BuySignal and not vwapRsi2BuySignal[1]
+    log.info("🔥 RSI(2) EXTREME LONG | Price: {0} < VWAP -2σ AND RSI(2): {1} < 10 | HIGH PROBABILITY bounce (Connors)", close, rsi2)
+
+if vwapRsi2SellSignal and not vwapRsi2SellSignal[1]
+    log.info("🔥 RSI(2) EXTREME SHORT | Price: {0} > VWAP +2σ AND RSI(2): {1} > 90 | HIGH PROBABILITY pullback (Connors)", close, rsi2)
+
+// ================================================================================================
+// PART 5: PREVIOUS DAY LEVELS (FIXED - Using request.security for actual previous day)
+// ================================================================================================
+
+// Update PDH/PDL drawing and logging at start of new day
+// (pdh/pdl variables already updated earlier in script for quadrant calculations)
+if isNewDay
+    log.info("📅 PREVIOUS DAY LEVELS | PDH: {0} | PDL: {1} | PDC: {2}", pdh, pdl, pdc)
+    
+    // Delete old lines and labels
+    if not na(pdhLine)
+        line.delete(pdhLine)
+        line.delete(pdlLine)
+        line.delete(pdcLine)
+    if not na(pdhLabel)
+        label.delete(pdhLabel)
+        label.delete(pdlLabel)
+        label.delete(pdcLabel)
+    
+    // Draw new persistent lines - ONLY IF ENABLED
+    if showPrevDayLines
+        pdhLine := line.new(bar_index, pdh, bar_index + 1, pdh, color=color.new(color.red, 30), width=2, style=line.style_solid, extend=extend.right)
+        pdlLine := line.new(bar_index, pdl, bar_index + 1, pdl, color=color.new(color.green, 30), width=2, style=line.style_solid, extend=extend.right)
+        pdcLine := line.new(bar_index, pdc, bar_index + 1, pdc, color=color.new(color.blue, 30), width=1, style=line.style_solid, extend=extend.right)
+        
+// Update PDH/PDL/PDC labels every bar (move to current bar)
+if showPrevDayLines and not na(pdh) and not na(pdl) and not na(pdc)
+    // Delete old labels
+    if not na(pdhLabel)
+        label.delete(pdhLabel)
+        label.delete(pdlLabel)
+        label.delete(pdcLabel)
+    
+    // Smart label display: Only show PDC if it's far enough from PDL (>15 points)
+    // This prevents clutter when levels are too close
+    showPDC = math.abs(pdc - pdl) > 15
+    
+    // Create new labels at current bar (right edge) - PDH and PDL always shown, PDC conditional
+    pdhLabel := label.new(bar_index, pdh, "PDH " + str.tostring(pdh, format.mintick), style=label.style_label_left, color=color.new(color.red, 30), textcolor=color.white, size=size.small, tooltip="Previous Day High - Resistance")
+    pdlLabel := label.new(bar_index, pdl, "PDL " + str.tostring(pdl, format.mintick), style=label.style_label_left, color=color.new(color.green, 30), textcolor=color.white, size=size.small, tooltip="Previous Day Low - Support")
+    
+    // Only show PDC label if far enough from PDL
+    if showPDC
+        pdcLabel := label.new(bar_index, pdc, "PDC " + str.tostring(pdc, format.mintick), style=label.style_label_left, color=color.new(color.blue, 30), textcolor=color.white, size=size.tiny, tooltip="Previous Day Close")
+
+// Previous day level tests
+nearPDH = not na(pdh) and math.abs(close - pdh) / close < 0.002
+nearPDL = not na(pdl) and math.abs(close - pdl) / close < 0.002
+
+pdhRejection = enablePreviousDayLevels and nearPDH and high >= pdh and close < pdh
+pdlBounce = enablePreviousDayLevels and nearPDL and low <= pdl and close > pdl
+
+// ================================================================================================
+// PART 6: TREND & MOMENTUM
+// ================================================================================================
+
+ema9 = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+ema50 = ta.ema(close, 50)
+
+plot(showEMAs ? ema9 : na, "EMA 9", color.new(color.blue, 0), 1)
+plot(showEMAs ? ema21 : na, "EMA 21", color.new(color.orange, 0), 1)
+plot(showEMAs ? ema50 : na, "EMA 50", color.new(color.red, 0), 2)
+
+uptrendIntraday = ema9 > ema21 and ema21 > ema50
+downtrendIntraday = ema9 < ema21 and ema21 < ema50
+
+// ================================================================================================
+// MOMENTUM CONFIRMATION (Elder: "Price + Momentum must align")
+// ================================================================================================
+// MACD, RSI and momentumConfirms already declared earlier
+
+// RSI confirmation (not extreme overbought/oversold) - RELAXED ranges
+rsiNeutralBull = rsi > 30 and rsi < 80  // Not deeply oversold, not extreme overbought
+rsiNeutralBear = rsi < 70 and rsi > 20  // Not extreme overbought, not deeply oversold
+
+// ================================================================================================
+// PART 6B: ADVANCED ENTRY STRATEGIES (Raschke, Fisher)
+// ================================================================================================
+
+// --- STRATEGY 1: TURTLE SOUP (Linda Raschke - Failed Breakout) ---
+// When: 20-day high/low is tested but FAILS → explosive reversal
+// Why: Traps breakout traders, creates strong counter-move
+
+high20 = ta.highest(high, 20)
+low20 = ta.lowest(low, 20)
+
+// Turtle Soup Long (failed breakdown = buy)
+turtleSoupLong = enableORB and low < low20[1] and close > low20[1] and isRTH
+// Stop: Below recent swing low (tight!)
+swingLow5 = ta.lowest(low, 5)
+turtleSoupStopLong = turtleSoupLong ? swingLow5 : na
+// Target: Previous 20-day high
+turtleSoupTargetLong = turtleSoupLong ? high20[1] : na
+
+// Turtle Soup Short (failed breakout = sell)
+turtleSoupShort = enableORB and high > high20[1] and close < high20[1] and isRTH
+// Stop: Above recent swing high
+swingHigh5 = ta.highest(high, 5)
+turtleSoupStopShort = turtleSoupShort ? swingHigh5 : na
+// Target: Previous 20-day low
+turtleSoupTargetShort = turtleSoupShort ? low20[1] : na
+
+// --- STRATEGY 2: HOLY GRAIL SETUP (Raschke - Trend + Momentum) ---
+// When: ADX > 30 (strong trend) + pullback to 20 EMA + volume confirmation
+// Why: Combines trend strength with precise entry timing
+
+ema20 = ta.ema(close, 20)
+[diPlus, diMinus, adx] = ta.dmi(14, 14)
+
+// Holy Grail Long (pullback buy in uptrend)
+holyGrailLong = enableVWAP and adx > 30 and close > ema20 and low <= ema20 and close > close[1] and isRTH and not isForceExit
+
+// Holy Grail Short (pullback sell in downtrend)
+holyGrailShort = enableVWAP and adx > 30 and close < ema20 and high >= ema20 and close < close[1] and isRTH and not isForceExit
+
+// Plot 20 EMA for Holy Grail reference
+plot(showHolyGrailEMA ? ema20 : na, "EMA 20 (Holy Grail)", color.new(color.purple, 30), 2, plot.style_circles)
+
+// --- STRATEGY 3: PIVOT POINT CONFLUENCE (Floor Trader Pivots) ---
+// What: Standard pivot levels calculated from previous day
+// Why: Self-fulfilling prophecy - institutional traders watch these levels
+
+// Previous day close (for pivot calculation)
+var float pdClose = na
+if isNewDay
+    pdClose := close[1]
+
+// Standard Floor Trader Pivots
+pivotPoint = not na(pdh) and not na(pdl) and not na(pdClose) ? (pdh + pdl + pdClose) / 3 : na
+r1 = not na(pivotPoint) and not na(pdl) ? 2 * pivotPoint - pdl : na
+s1 = not na(pivotPoint) and not na(pdh) ? 2 * pivotPoint - pdh : na
+r2 = not na(pivotPoint) and not na(pdh) and not na(pdl) ? pivotPoint + (pdh - pdl) : na
+s2 = not na(pivotPoint) and not na(pdh) and not na(pdl) ? pivotPoint - (pdh - pdl) : na
+
+// Plot pivot levels
+plot(showPivots ? pivotPoint : na, "Pivot Point", color.new(color.white, 30), 2, plot.style_circles)
+plot(showPivots ? r1 : na, "R1", color.new(color.red, 50), 1, plot.style_cross)
+plot(showPivots ? s1 : na, "S1", color.new(color.green, 50), 1, plot.style_cross)
+plot(showPivots ? r2 : na, "R2", color.new(color.red, 70), 1, plot.style_cross)
+plot(showPivots ? s2 : na, "S2", color.new(color.green, 70), 1, plot.style_cross)
+
+// Plot stop levels - DISABLED
+// Stop levels are shown in dashboard for cleaner chart
+// Uncomment below if you want visual stop lines on chart
+//
+// plot(orbComplete and isRTH ? stopLevelLong : na, "Long Stop", 
+//      color.new(color.red, 30), 2, plot.style_stepline)
+// plot(orbComplete and isRTH ? stopLevelShort : na, "Short Stop", 
+//      color.new(color.red, 30), 2, plot.style_stepline)
+
+// Pivot bounce/rejection detection (price must test level then reverse with volume)
+nearS1 = not na(s1) and math.abs(close - s1) / close < 0.002
+nearS2 = not na(s2) and math.abs(close - s2) / close < 0.002
+nearR1 = not na(r1) and math.abs(close - r1) / close < 0.002
+nearR2 = not na(r2) and math.abs(close - r2) / close < 0.002
+
+// Pivot Bounce Long (support holds)
+pivotBounceLong = enablePreviousDayLevels and (nearS1 or nearS2) and low <= (nearS1 ? s1 : s2) and close > close[1] and isRTH
+
+// Pivot Rejection Short (resistance holds)
+pivotRejectionShort = enablePreviousDayLevels and (nearR1 or nearR2) and high >= (nearR1 ? r1 : r2) and close < close[1] and isRTH
+
+// Apply time filter to all strategies (validTimeWindow defined earlier at line 362)
+turtleSoupLongFiltered = turtleSoupLong and validTimeWindow
+turtleSoupShortFiltered = turtleSoupShort and validTimeWindow
+holyGrailLongFiltered = holyGrailLong and validTimeWindow
+holyGrailShortFiltered = holyGrailShort and validTimeWindow
+pivotBounceLongFiltered = pivotBounceLong and validTimeWindow
+pivotRejectionShortFiltered = pivotRejectionShort and validTimeWindow
+
+// LOGGING: Individual strategy entries
+if turtleSoupLongFiltered and not turtleSoupLongFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    log.info("🐢 TURTLE SOUP LONG | Failed breakdown reversal | Price: {0} | Stop: {1} | Target: {2} | Vol: {3}", close, turtleSoupStopLong, turtleSoupTargetLong, volStatus)
+
+if turtleSoupShortFiltered and not turtleSoupShortFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    log.info("🐢 TURTLE SOUP SHORT | Failed breakout reversal | Price: {0} | Stop: {1} | Target: {2} | Vol: {3}", close, turtleSoupStopShort, turtleSoupTargetShort, volStatus)
+
+if holyGrailLongFiltered and not holyGrailLongFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    log.info("⚡ HOLY GRAIL LONG | ADX: {0} | EMA20: {1} | Price: {2} | Vol: {3}", adx, ema20, close, volStatus)
+
+if holyGrailShortFiltered and not holyGrailShortFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    log.info("⚡ HOLY GRAIL SHORT | ADX: {0} | EMA20: {1} | Price: {2} | Vol: {3}", adx, ema20, close, volStatus)
+
+if pivotBounceLongFiltered and not pivotBounceLongFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    pivotLevel = nearS1 ? s1 : s2
+    log.info("📍 PIVOT BOUNCE LONG | Support at {0} | Price: {1} | Vol: {2}", pivotLevel, close, volStatus)
+
+if pivotRejectionShortFiltered and not pivotRejectionShortFiltered[1]
+    volStatus = highVolume ? "HIGH" : lowVolume ? "LOW" : "AVG"
+    pivotLevel = nearR1 ? r1 : r2
+    log.info("📍 PIVOT REJECTION SHORT | Resistance at {0} | Price: {1} | Vol: {2}", pivotLevel, close, volStatus)
+
+// ================================================================================================
+// PART 7: SIGNAL AGGREGATION (WEIGHTED SCORING)
+// ================================================================================================
+// Instead of simple counting, weight signals by quality
+// ORB with volume = strongest (3pts), VWAP/Holy Grail = medium (2pts), Pivots = lower (1pt)
+
+// BUY SCORE (weighted by signal quality)
+// Score based on CURRENT POSITION relative to levels, not just breakout moment
+buyScore = 0
+buyScore := buyScore + (orbLongSignal ? 4 : orbComplete and close > orbHigh ? 3 : 0)  // ORB signal = 4 pts, position = 3 pts
+buyScore := buyScore + (pullbackEntryLong ? 2 : 0)  // Early pullback (first throwback) = 2 bonus pts
+buyScore := buyScore + (orbRetestLong ? 3 : 0)  // Late ORB retest (all day) = 3 pts standalone
+buyScore := buyScore + (failedBreakoutBearTrap ? 3 : 0)  // Failed bear trap = strong reversal signal = 3 pts
+buyScore := buyScore + (vwapBuySignal or (close < vwapLower1 and close > close[1]) ? 2 : 0)   // VWAP mean reversion = 2 pts
+buyScore := buyScore + (vwapRsi2BuySignal ? 3 : 0)  // RSI(2) < 10 + VWAP extreme = HIGH PROBABILITY (Connors) = 3 pts
+buyScore := buyScore + (holyGrailLongFiltered ? 2 : 0)  // Holy Grail = 2 pts
+buyScore := buyScore + (turtleSoupLongFiltered ? 2 : 0)  // Turtle Soup = 2 pts
+buyScore := buyScore + (orbFalseBreakoutShort ? 2 : 0)  // Fade fake breakdown = 2 pts
+buyScore := buyScore + (not na(pdl) and close > pdl and close < pdl * 1.002 ? 1 : 0)  // Near PDL = 1 pt
+buyScore := buyScore + (pivotBounceLongFiltered or (not na(s1) and close > s1 and close < s1 * 1.002) ? 1 : 0)  // Near pivot support = 1 pt
+buyScore := buyScore + (aboveVWAP ? 1 : 0)  // Above VWAP = bullish context = 1 pt
+buyScore := buyScore + (momentumConfirmsLong ? 1 : 0)  // Momentum confirmation = 1 pt
+buyScore := buyScore + (isMorningSession ? 1 : 0)  // Morning session edge = 1 pt
+// QUADRANT POSITION SCORING (Fisher: "Position within range matters")
+buyScore := buyScore + (inStrongBullZone ? 2 : inUpperHalf ? 1 : 0)  // Q4 = 2 pts (strongest), Q3 = 1 pt (good)
+buyScore := buyScore - (longInWrongQuadrant ? 2 : 0)  // PENALTY: Long in Q1/Q2 = -2 pts (fighting the bias)
+// VOLUME SCORING (User feedback: volume is ONE part of picture, not binary gate)
+buyScore := buyScore + (higherTFVolumeConfirmed ? 3 : currentTFVolumeConfirmed ? 2 : volumeSpike ? 2 : 0)  // Volume adds 2-3 pts (important but not blocking)
+
+// SELL SCORE (weighted by signal quality)
+sellScore = 0
+sellScore := sellScore + (orbShortSignal ? 4 : orbComplete and close < orbLow ? 3 : 0)  // ORB signal = 4 pts, position = 3 pts
+sellScore := sellScore + (pullbackEntryShort ? 2 : 0)  // Early pullback (first throwback) = 2 bonus pts
+sellScore := sellScore + (orbRetestShort ? 3 : 0)  // Late ORB retest (all day) = 3 pts standalone
+sellScore := sellScore + (failedBreakoutBullTrap ? 3 : 0)  // Failed bull trap = strong reversal signal = 3 pts
+sellScore := sellScore + (vwapSellSignal or (close > vwapUpper1 and close < close[1]) ? 2 : 0)  // VWAP mean reversion = 2 pts
+sellScore := sellScore + (vwapRsi2SellSignal ? 3 : 0)  // RSI(2) > 90 + VWAP extreme = HIGH PROBABILITY (Connors) = 3 pts
+sellScore := sellScore + (holyGrailShortFiltered ? 2 : 0)  // Holy Grail = 2 pts
+sellScore := sellScore + (turtleSoupShortFiltered ? 2 : 0)  // Turtle Soup = 2 pts
+sellScore := sellScore + (orbFalseBreakoutLong ? 2 : 0)  // Fade fake breakout = 2 pts
+sellScore := sellScore + (not na(pdh) and close < pdh and close > pdh * 0.998 ? 1 : 0)  // Near PDH = 1 pt
+sellScore := sellScore + (pivotRejectionShortFiltered or (not na(r1) and close < r1 and close > r1 * 0.998) ? 1 : 0)  // Near pivot resistance = 1 pt
+sellScore := sellScore + (not aboveVWAP ? 1 : 0)  // Below VWAP = bearish context = 1 pt
+sellScore := sellScore + (momentumConfirmsShort ? 1 : 0)  // Momentum confirmation = 1 pt
+// QUADRANT POSITION SCORING (Fisher: "Position within range matters")
+sellScore := sellScore + (inStrongBearZone ? 2 : inLowerHalf ? 1 : 0)  // Q1 = 2 pts (strongest), Q2 = 1 pt (good)
+sellScore := sellScore - (shortInWrongQuadrant ? 2 : 0)  // PENALTY: Short in Q3/Q4 = -2 pts (fighting the bias)
+// VOLUME SCORING (User feedback: volume is ONE part of picture, not binary gate)
+sellScore := sellScore + (higherTFVolumeConfirmed ? 3 : currentTFVolumeConfirmed ? 2 : volumeSpike ? 2 : 0)  // Volume adds 2-3 pts (important but not blocking)
+sellScore := sellScore + (isMorningSession ? 1 : 0)  // Morning session edge = 1 pt
+
+// Max possible: 4 + 2 + 3 + 2 + 3 + 2 + 2 + 2 + 1 + 1 + 1 + 1 + 1 + 2(Q4/Q1) - 2(penalty) + 3(volume) = 30 points
+// QUADRANTS NOW ACTIVELY SCORED:
+//   - Q4 (strongest bull) = +2 pts
+//   - Q3 (upper half) = +1 pt
+//   - Q2 (lower half) = +1 pt (for shorts)
+//   - Q1 (strongest bear) = +2 pts (for shorts)
+//   - PENALTY: Long in Q1/Q2 = -2 pts (fighting bearish bias)
+//   - PENALTY: Short in Q3/Q4 = -2 pts (fighting bullish bias)
+// PROFESSIONAL RULE: Threshold remains 8-10 pts
+// - ORB trades: Primary strategy (Fisher/Raschke) = 4 pts base + quadrant/volume/momentum can reach 8+
+// - Non-ORB: Require multiple confluences (VWAP + volume + momentum + support) to reach 8-10
+// - Fisher's Rule: "Never fight the quadrant" = wrong quadrant gets penalty
+
+// Trend confluence
+trendConfirmsBuy = uptrendIntraday or aboveVWAP
+trendConfirmsSell = downtrendIntraday or not aboveVWAP
+
+// FINAL SIGNALS - PROFESSIONAL APPROACH:
+// 1. ORB = PRIMARY strategy (Fisher: "The Opening Range is the most important price discovery")
+//    - Must have ORB signal (4 pts) + momentum confirmation
+//    - Already gated by isRegularHours in ORB logic above
+// 2. Non-ORB = SECONDARY (require strong confluence)
+//    - Need 8+ points (e.g., VWAP RSI2 extreme (3) + Holy Grail (2) + Turtle Soup (2) + context (1) = 8)
+//    - Must have trend confirmation + valid time window
+isORBTrade = orbLongSignal or orbShortSignal
+
+// HYBRID MULTI-CONFIRMATION SYSTEM (Option C):
+// - ORB trades (PRIMARY): require orbComplete + score >= 5 (ORB 4pts + 1+ confirmation)
+// - Non-ORB trades (SECONDARY - two paths):
+//   PATH 1: Very strong confluence (≥10/28) can trigger BEFORE ORB completes (rare, high-conviction)
+//   PATH 2: Normal confluence (≥8/28) can trigger AFTER ORB completes (standard)
+// This allows exceptional setups (VWAP+RSI2 extreme + Holy Grail + context) to trade early
+// while keeping most non-ORB trades conservative (wait for ORB context)
+
+// ORB trades (always require ORB complete)
+orbBuySignal = orbLongSignal and orbComplete and buyScore >= 5
+orbSellSignal = orbShortSignal and orbComplete and sellScore >= 5
+
+// Non-ORB trades (two paths)
+nonOrbBuySignalStrong = buyScore >= 10 and trendConfirmsBuy and validTimeWindow and not isForceExit and not orbLongSignal  // Very strong, can trade anytime
+nonOrbBuySignalNormal = buyScore >= 8 and trendConfirmsBuy and validTimeWindow and not isForceExit and orbComplete and not orbLongSignal  // Normal, wait for ORB
+nonOrbSellSignalStrong = sellScore >= 10 and trendConfirmsSell and validTimeWindow and not isForceExit and not orbShortSignal  // Very strong, can trade anytime
+nonOrbSellSignalNormal = sellScore >= 8 and trendConfirmsSell and validTimeWindow and not isForceExit and orbComplete and not orbShortSignal  // Normal, wait for ORB
+
+// Combine all signals
+strongBuySignal = orbBuySignal or nonOrbBuySignalStrong or nonOrbBuySignalNormal
+strongSellSignal = orbSellSignal or nonOrbSellSignalStrong or nonOrbSellSignalNormal
+
+// Entry status detection (needed for decision system) - move here from later in code
+// Distance from current price to entry level (for dashboard display)
+distanceToEntryLong = orbComplete and isRegularHours ? close - entryLevelLong : na
+distanceToEntryShort = orbComplete and isRegularHours ? entryLevelShort - close : na
+
+// Entry status - only "at entry" if within reasonable range (not way above/below)
+// Fisher: Enter AT the breakout level, not after it's run 50 points
+// ONLY show during RTH - pre/post market should not show entry status
+atEntryLong = orbComplete and isRegularHours and close >= entryLevelLong and close <= entryLevelLong + entryTolerance
+atEntryShort = orbComplete and isRegularHours and close <= entryLevelShort and close >= entryLevelShort - entryTolerance
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VISUAL DECISION SYSTEM (Traffic Light Logic)
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI/Human can look at ONE screenshot and instantly know: GO LONG / GO SHORT / WAIT
+
+// LONG SIGNAL QUALITY (Green Light System)
+bool longSignalExists = strongBuySignal and orbComplete
+bool longInGoodQuadrant = longInRightQuadrant  // In Q3 or Q4
+bool longInExcellentQuadrant = inStrongBullZone  // In Q4 specifically
+bool longIsBlocked = longInWrongQuadrant  // In Q1 or Q2 = fighting the trend
+
+// Final Long Decision (CONTEXT-AWARE - matches Status row)
+string longDecision = not orbComplete ? "⏳ WAIT ORB" : 
+                     isForceExit ? "🚫 NO ENTRY" :
+                     (atEntryLong or longEntryWindowOpen) and highVolume ? "🟢 ENTER NOW!" :
+                     (atEntryLong or longEntryWindowOpen) and not highVolume ? "⚠️ WAIT VOLUME" :
+                     not longSignalExists ? "⏳ WAIT SIGNAL" :
+                     longIsBlocked ? "🚫 BLOCKED (Q1/Q2)" :
+                     longInExcellentQuadrant ? "✅ READY (Q4)" :
+                     longInGoodQuadrant ? "✅ READY (Q3)" :
+                     "⚠️ CAUTION"
+
+color longDecisionColor = not orbComplete ? color.gray :
+                         isForceExit ? color.new(color.red, 0) :
+                         (atEntryLong or longEntryWindowOpen) and highVolume ? color.new(color.lime, 0) :
+                         (atEntryLong or longEntryWindowOpen) and not highVolume ? color.new(color.yellow, 0) :
+                         not longSignalExists ? color.orange :
+                         longIsBlocked ? color.new(color.red, 0) :
+                         longInExcellentQuadrant ? color.new(color.green, 0) :
+                         longInGoodQuadrant ? color.new(color.green, 0) :
+                         color.new(color.orange, 0)
+
+// SHORT SIGNAL QUALITY (Red Light System)
+bool shortSignalExists = strongSellSignal and orbComplete
+bool shortInGoodQuadrant = shortInRightQuadrant  // In Q1 or Q2
+bool shortInExcellentQuadrant = inStrongBearZone  // In Q1 specifically
+bool shortIsBlocked = shortInWrongQuadrant  // In Q3 or Q4 = fighting the trend
+
+// Final Short Decision (CONTEXT-AWARE - matches Status row)
+string shortDecision = not orbComplete ? "⏳ WAIT ORB" :
+                      isForceExit ? "🚫 NO ENTRY" :
+                      (atEntryShort or shortEntryWindowOpen) and highVolume ? "🟢 ENTER NOW!" :
+                      (atEntryShort or shortEntryWindowOpen) and not highVolume ? "⚠️ WAIT VOLUME" :
+                      not shortSignalExists ? "⏳ WAIT SIGNAL" :
+                      shortIsBlocked ? "🚫 BLOCKED (Q3/Q4)" :
+                      shortInExcellentQuadrant ? "✅ READY (Q1)" :
+                      shortInGoodQuadrant ? "✅ READY (Q2)" :
+                      "⚠️ CAUTION"
+
+color shortDecisionColor = not orbComplete ? color.gray :
+                          isForceExit ? color.new(color.red, 0) :
+                          (atEntryShort or shortEntryWindowOpen) and highVolume ? color.new(color.red, 0) :
+                          (atEntryShort or shortEntryWindowOpen) and not highVolume ? color.new(color.yellow, 0) :
+                          not shortSignalExists ? color.orange :
+                          shortIsBlocked ? color.new(color.red, 0) :
+                          shortInExcellentQuadrant ? color.new(color.red, 30) :
+                          shortInGoodQuadrant ? color.new(color.orange, 0) :
+                          color.new(color.orange, 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FAKE BREAKOUT DETECTION (Advanced Warning System)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Detects conditions that indicate high probability of false breakout
+// Prevents entering trades that look good but have low success probability
+
+// Call function to detect fake breakouts
+[fakeBreakoutLongDetected, fakeBreakoutShortDetected, orbNearHighLong, orbNearLowShort, fakeBreakoutLong_WrongQuadrant, fakeBreakoutLong_BelowVWAP, fakeBreakoutLong_LowVolume, fakeBreakoutLong_BearishBias, fakeBreakoutLong_WeakScore, fakeBreakoutShort_WrongQuadrant, fakeBreakoutShort_AboveVWAP, fakeBreakoutShort_LowVolume, fakeBreakoutShort_BullishBias, fakeBreakoutShort_WeakScore] = detectFakeBreakouts(orbComplete, close, orbHigh, orbLow, longInWrongQuadrant, shortInWrongQuadrant, aboveVWAP, highVolume, buyScore, sellScore)
+
+// Detailed warning messages
+string fakeBreakoutLongWarning = fakeBreakoutLongDetected ? "⚠️ FAKE BREAK RISK" + (orbNearHighLong ? " (APPROACHING)\n" : "\n") + (fakeBreakoutLong_WrongQuadrant ? "• Wrong Quadrant (Q1/Q2)\n" : "") + (fakeBreakoutLong_BelowVWAP ? "• Below VWAP\n" : "") + (fakeBreakoutLong_LowVolume ? "• Low Volume\n" : "") + (fakeBreakoutLong_BearishBias ? "• SHORT FAVORED\n" : "") + (fakeBreakoutLong_WeakScore ? "• Score < 5 (need 5+ for ORB)\n" : "") : ""
+
+string fakeBreakoutShortWarning = fakeBreakoutShortDetected ? "⚠️ FAKE BREAK RISK" + (orbNearLowShort ? " (APPROACHING)\n" : "\n") + (fakeBreakoutShort_WrongQuadrant ? "• Wrong Quadrant (Q3/Q4)\n" : "") + (fakeBreakoutShort_AboveVWAP ? "• Above VWAP\n" : "") + (fakeBreakoutShort_LowVolume ? "• Low Volume\n" : "") + (fakeBreakoutShort_BullishBias ? "• LONG FAVORED\n" : "") + (fakeBreakoutShort_WeakScore ? "• Score < 5 (need 5+ for ORB)\n" : "") : ""
+
+// Draw visual labels for fake breakouts
+if fakeBreakoutLongDetected and not fakeBreakoutLongDetected[1]
+    label.new(bar_index, high, "⚠️ FAKE\nBREAKOUT", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.black, size=size.normal, tooltip=fakeBreakoutLongWarning)
+
+if fakeBreakoutShortDetected and not fakeBreakoutShortDetected[1]
+    label.new(bar_index, low, "⚠️ FAKE\nBREAKDOWN", style=label.style_label_up, color=color.new(color.orange, 0), textcolor=color.black, size=size.normal, tooltip=fakeBreakoutShortWarning)
+
+
+// PROACTIVE REVERSAL WARNINGS - Call function to draw labels
+drawReversalWarnings(orbComplete, close, orbQ2High, orbQ3High, orbHigh, orbLow, failedBreakoutBullTrap, failedBreakoutBearTrap, inOrbQ1, orbQ1High, macdBullish, macdBearish)
+
+
+
+// Edge detection (only show new signals)
+buySignalNew = strongBuySignal and not strongBuySignal[1]
+sellSignalNew = strongSellSignal and not strongSellSignal[1]
+
+// Declare string variables for logging
+var string signalType = na
+var string entryType = na
+var string stratList = na
+
+// LOGGING: Strong signals
+if buySignalNew
+    signalType := orbBuySignal ? "ORB" : nonOrbBuySignalStrong ? "NON-ORB STRONG (≥10)" : "NON-ORB (≥8)"
+    entryType := pullbackEntryLong ? "EARLY PULLBACK" : orbRetestLong ? "ORB RETEST" : orbBreakoutLong ? "BREAKOUT" : "CONFLUENCE"
+    stratList := (orbLongSignal ? "ORB-" + entryType + " " : "") + (orbRetestLong ? "ORB-RETEST " : "") + (vwapBuySignal ? "VWAP " : "") + (vwapRsi2BuySignal ? "VWAP+RSI2 " : "") + (turtleSoupLongFiltered ? "TS " : "") + (holyGrailLongFiltered ? "HG " : "") + (pivotBounceLongFiltered ? "PIV " : "")
+    quadrantInfo = inUpperHalf ? " | Quadrant: Q" + (inQ4 ? "4" : "3") + " (upper)" : ""
+    log.info("🟢 STRONG BUY SIGNAL | Type: {0} | Score: {1}/29 | Strategies: {2} | Price: {3} | ORB Complete: {4}{5}", signalType, buyScore, stratList, close, orbComplete, quadrantInfo)
+    
+if sellSignalNew
+    signalType := orbSellSignal ? "ORB" : nonOrbSellSignalStrong ? "NON-ORB STRONG (≥10)" : "NON-ORB (≥8)"
+    entryType := pullbackEntryShort ? "EARLY PULLBACK" : orbRetestShort ? "ORB RETEST" : orbBreakdownShort ? "BREAKOUT" : "CONFLUENCE"
+    stratList := (orbShortSignal ? "ORB-" + entryType + " " : "") + (orbRetestShort ? "ORB-RETEST " : "") + (vwapSellSignal ? "VWAP " : "") + (vwapRsi2SellSignal ? "VWAP+RSI2 " : "") + (turtleSoupShortFiltered ? "TS " : "") + (holyGrailShortFiltered ? "HG " : "") + (pivotRejectionShortFiltered ? "PIV " : "")
+    quadrantInfo = inLowerHalf ? " | Quadrant: Q" + (inQ1 ? "1" : "2") + " (lower)" : ""
+    log.info("🔴 STRONG SELL SIGNAL | Type: {0} | Score: {1}/29 | Strategies: {2} | Price: {3} | ORB Complete: {4}{5}", signalType, sellScore, stratList, close, orbComplete, quadrantInfo)
+
+// ================================================================================================
+// STRATEGY EXECUTION - ENTRY & EXIT
+// ================================================================================================
+
+// Calculate position size based on risk
+contractsToTrade = orbComplete and not na(actualStopDistance) and actualStopDistance > 0 ? 
+     math.floor(maxRiskDollars / (actualStopDistance * contractMultiplier)) : 1
+contractsToTrade := math.max(contractsToTrade, 1)  // At least 1 contract
+
+// Scale-in position sizing (Schwager: "Add to winners")
+initialContracts = enableScaleIn ? math.max(1, math.floor(contractsToTrade * scaleInPercent / 100)) : contractsToTrade
+scaleInContracts = enableScaleIn ? math.max(1, contractsToTrade - initialContracts) : 0
+
+// LONG ENTRY
+// Entry 1: Initial position at breakout (or if scale-in disabled, full position)
+if strongBuySignal and strategy.position_size == 0
+    entryQty = initialContracts
+    entryType := orbBuySignal ? "ORB" : nonOrbBuySignalStrong ? "NON-ORB STRONG" : "NON-ORB"
+    entryComment = enableScaleIn ? "BUY Initial (" + str.tostring(entryQty) + "/" + str.tostring(contractsToTrade) + ")" : entryType + " Score:" + str.tostring(buyScore)
+    strategy.entry("LONG", strategy.long, qty=entryQty, comment=entryComment)
+    log.info("✅ STRATEGY LONG ENTRY | Type: {0} | Contracts: {1}/{2} | Entry: {3} | Stop: {4} | Target: {5} | Score: {6}/28", 
+             entryType, entryQty, contractsToTrade, close, stopLevelLong, targetLevelLong, buyScore)
+    // Close entry window once trade taken
+    longEntryWindowOpen := false
+    barsInLongWindow := 0
+
+// Entry 2: Scale-in on pullback confirmation (only if enabled and initial position exists)
+if enableScaleIn and pullbackEntryLong and strategy.position_size > 0 and strategy.position_size < contractsToTrade
+    entryQty = scaleInContracts
+    strategy.entry("LONG", strategy.long, qty=entryQty, comment="BUY Scale-In (Pullback)")
+    log.info("✅ STRATEGY LONG SCALE-IN | Type: Pullback | Contracts: {0} | Total: {1} | Entry: {2}", 
+             entryQty, strategy.position_size, close)
+
+// SHORT ENTRY
+// Entry 1: Initial position at breakdown (or if scale-in disabled, full position)
+if strongSellSignal and strategy.position_size == 0
+    entryQty = initialContracts
+    entryType := orbSellSignal ? "ORB" : nonOrbSellSignalStrong ? "NON-ORB STRONG" : "NON-ORB"
+    entryComment = enableScaleIn ? "SELL Initial (" + str.tostring(entryQty) + "/" + str.tostring(contractsToTrade) + ")" : entryType + " Score:" + str.tostring(sellScore)
+    strategy.entry("SHORT", strategy.short, qty=entryQty, comment=entryComment)
+    log.info("✅ STRATEGY SHORT ENTRY | Type: {0} | Contracts: {1}/{2} | Entry: {3} | Stop: {4} | Target: {5} | Score: {6}/28", 
+             entryType, entryQty, contractsToTrade, close, stopLevelShort, targetLevelShort, sellScore)
+    // Close entry window once trade taken
+    shortEntryWindowOpen := false
+    barsInShortWindow := 0
+
+// Entry 2: Scale-in on pullback confirmation (only if enabled and initial position exists)
+if enableScaleIn and pullbackEntryShort and strategy.position_size < 0 and math.abs(strategy.position_size) < contractsToTrade
+    entryQty = scaleInContracts
+    strategy.entry("SHORT", strategy.short, qty=entryQty, comment="SELL Scale-In (Pullback)")
+    log.info("✅ STRATEGY SHORT SCALE-IN | Type: Pullback | Contracts: {0} | Total: {1} | Entry: {2}", 
+             entryQty, math.abs(strategy.position_size), close)
+
+// LONG EXITS
+if strategy.position_size > 0 and orbComplete
+    // Exit 1: Target hit
+    strategy.exit("LONG TP", from_entry="LONG", limit=targetLevelLong, stop=stopLevelLong, comment="Target/Stop")
+    
+    // FISHER RULE: Use stop/target only (no discretionary exits)
+    // Discretionary exits disabled - let the trade work to stop or target
+    // Fisher: "The worst thing you can do is exit manually. You have a stop for a reason."
+    
+    // Exit 2: Progressive Quadrant Exit (Fail Fast with Smart Retests)
+    // Divides the ORB range into 4 zones - allows retests in Q3/Q4, exits progressively in Q2/Q1
+    // Example: 30-point ORB → Exit 50% at 15 points (midpoint), 100% at 22.5 points (Q1)
+    
+    if inOrbQ2 and not inOrbQ2[1]
+        // Below midpoint = weak retest, exit 50% to protect capital
+        strategy.close("LONG", qty_percent=50, comment="Q2 Exit (Below Mid)")
+        label.new(bar_index, high, "🚨 Q2 EXIT\n50%", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.white, size=size.small, tooltip="Weak retest - exited 50% at midpoint")
+    
+    if inOrbQ1 and not inOrbQ1[1]
+        // In bottom 25% = failed breakout, exit 100%
+        strategy.close("LONG", comment="Q1 Exit (Failed Breakout)")
+        label.new(bar_index, high, "❌ Q1 EXIT\n100%", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, tooltip="Failed breakout - exited 100% at Q1")
+    
+    if close < orbLow and close[1] >= orbLow
+        // Full reversal to opposite side = you were completely wrong, exit 100%
+        strategy.close("LONG", comment="Reversal Exit (Below ORB Low)")
+        label.new(bar_index, high, "⚠️ REVERSAL\nEXIT!", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.yellow, size=size.large, tooltip="Full reversal below ORB Low - position closed")
+    
+    // Exit 3: Momentum divergence (DISABLED - too aggressive)
+    // if not macdBullish and bar_index > strategy.opentrades.entry_bar_index(0) + 5
+    //     strategy.close("LONG", comment="Momentum Divergence")
+    
+    // Exit 4: Volume dried up (DISABLED - too aggressive)
+    // if lowVolume and bar_index > strategy.opentrades.entry_bar_index(0) + 5
+    //     strategy.close("LONG", comment="Volume Dried Up")
+
+// SHORT EXITS
+if strategy.position_size < 0 and orbComplete
+    // Exit 1: Target hit
+    strategy.exit("SHORT TP", from_entry="SHORT", limit=targetLevelShort, stop=stopLevelShort, comment="Target/Stop")
+    
+    // FISHER RULE: Use stop/target only (no discretionary exits)
+    // Discretionary exits disabled - let the trade work to stop or target
+    
+    // Exit 2: Progressive Quadrant Exit (Fail Fast with Smart Retests)
+    // For shorts, Q1 is safe (bottom), Q4 is danger (top)
+    
+    if not inOrbQ1 and not inOrbQ2 and close < orbQ3High and close[1] >= orbQ3High
+        // Above midpoint = weak retest, exit 50% to protect capital
+        strategy.close("SHORT", qty_percent=50, comment="Q3 Exit (Above Mid)")
+        label.new(bar_index, low, "🚨 Q3 EXIT\n50%", style=label.style_label_up, color=color.new(color.orange, 0), textcolor=color.white, size=size.small, tooltip="Weak retest - exited 50% above midpoint")
+    
+    if close >= orbQ3High and close < orbHigh and close[1] < orbQ3High
+        // In top 25% = failed breakdown, exit 100%
+        strategy.close("SHORT", comment="Q4 Exit (Failed Breakdown)")
+        label.new(bar_index, low, "❌ Q4 EXIT\n100%", style=label.style_label_up, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, tooltip="Failed breakdown - exited 100% at Q4")
+    
+    if close > orbHigh and close[1] <= orbHigh
+        // Full reversal to opposite side = you were completely wrong, exit 100%
+        strategy.close("SHORT", comment="Reversal Exit (Above ORB High)")
+        label.new(bar_index, low, "⚠️ REVERSAL\nEXIT!", style=label.style_label_up, color=color.new(color.red, 0), textcolor=color.yellow, size=size.large, tooltip="Full reversal above ORB High - position closed")
+    
+    // Exit 3: Momentum divergence (DISABLED - too aggressive)
+    // if not macdBearish and bar_index > strategy.opentrades.entry_bar_index(0) + 5
+    //     strategy.close("SHORT", comment="Momentum Divergence")
+    
+    // Exit 4: Volume dried up (DISABLED - too aggressive)
+    // if lowVolume and bar_index > strategy.opentrades.entry_bar_index(0) + 5
+    //     strategy.close("SHORT", comment="Volume Dried Up")
+
+// FORCE EXIT at end of day (close all positions)
+if isForceExit
+    strategy.close_all(comment="EOD Force Exit")
+    // Keep trade lines visible (labels need them)
+    if not isForceExit[1]
+        log.warning("⏰ FORCE EXIT | All positions closed at {0}", currentTimeHHMM)
+
+// For dashboard display - track position status
+inLongPosition = strategy.position_size > 0
+inShortPosition = strategy.position_size < 0
+
+// Keep trade lines visible with their labels
+// Lines only deleted at start of new day or when new trade signal fires
+
+// ================================================================================================
+// PART 8: VISUAL SIGNALS
+// ================================================================================================
+
+// Main signals - ONLY show ORB (primary) or VERY STRONG intraday (≥10 pts)
+// This removes 8-9 point "noise" signals
+buySignalToPlot = (orbBuySignal or nonOrbBuySignalStrong) and not (orbBuySignal or nonOrbBuySignalStrong)[1]
+if buySignalToPlot
+    labelSignalType = orbBuySignal ? "ORB BREAKOUT" : "STRONG INTRADAY"
+    
+    // Count multi-timeframe confirmations
+    tfConfirmCount = 0
+    confirmList = ""
+    
+    if ltfVolumeSpike
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ " + ltfTimeframe + "m LTF\n"
+    else
+        confirmList := confirmList + "❌ " + ltfTimeframe + "m LTF\n"
+    
+    if currentTFVolumeConfirmed
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ " + timeframe.period + " CTF\n"
+    else
+        confirmList := confirmList + "❌ " + timeframe.period + " CTF\n"
+    
+    if higherTFVolumeConfirmed
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ 15m HTF"
+    else
+        confirmList := confirmList + "❌ 15m HTF"
+    
+    // Color code based on consensus strength
+    labelColor = color.green
+    consensusLevel = ""
+    if tfConfirmCount == 3
+        labelColor := color.new(color.yellow, 0)  // Gold = Perfect alignment
+        consensusLevel := "STRONG"
+    else if tfConfirmCount == 2
+        labelColor := color.new(color.blue, 0)  // Blue = Good confluence
+        consensusLevel := "MODERATE"
+    else
+        labelColor := color.new(color.orange, 0)  // Orange = Early/weak
+        consensusLevel := "WEAK"
+    
+    signalText = "BUY " + str.tostring(tfConfirmCount) + "/3\n" + consensusLevel
+    
+    tooltipText = "✅ " + labelSignalType + " SIGNAL\n\n" +
+                  "Consensus: " + str.tostring(tfConfirmCount) + "/3 (" + consensusLevel + ")\n\n" +
+                  confirmList + "\n\n" +
+                  "Score: " + str.tostring(buyScore) + "/28\n" +
+                  "Trend: " + (trendConfirmsBuy ? "BULLISH" : "NEUTRAL") + "\n" +
+                  "Volume: " + (volumeZScore > 0 ? "HIGH" : "NORMAL") + "\n\n" +
+                  "⚡ 3/3 = Full size | 2/3 = Half size | 1/3 = Watch only"
+    label.new(bar_index, low, signalText, style=label.style_label_up, color=labelColor, textcolor=color.black, size=size.normal, tooltip=tooltipText)
+
+sellSignalToPlot = (orbSellSignal or nonOrbSellSignalStrong) and not (orbSellSignal or nonOrbSellSignalStrong)[1]
+if sellSignalToPlot
+    labelSignalType = orbSellSignal ? "ORB BREAKDOWN" : "STRONG INTRADAY"
+    
+    // Count multi-timeframe confirmations
+    tfConfirmCount = 0
+    confirmList = ""
+    
+    if ltfVolumeSpike
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ " + ltfTimeframe + "m LTF\n"
+    else
+        confirmList := confirmList + "❌ " + ltfTimeframe + "m LTF\n"
+    
+    if currentTFVolumeConfirmed
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ " + timeframe.period + " CTF\n"
+    else
+        confirmList := confirmList + "❌ " + timeframe.period + " CTF\n"
+    
+    if higherTFVolumeConfirmed
+        tfConfirmCount := tfConfirmCount + 1
+        confirmList := confirmList + "✅ 15m HTF"
+    else
+        confirmList := confirmList + "❌ 15m HTF"
+    
+    // Color code based on consensus strength
+    labelColor = color.red
+    consensusLevel = ""
+    if tfConfirmCount == 3
+        labelColor := color.new(color.yellow, 0)  // Gold = Perfect alignment
+        consensusLevel := "STRONG"
+    else if tfConfirmCount == 2
+        labelColor := color.new(color.purple, 0)  // Purple = Good confluence
+        consensusLevel := "MODERATE"
+    else
+        labelColor := color.new(color.orange, 0)  // Orange = Early/weak
+        consensusLevel := "WEAK"
+    
+    signalText = "SELL " + str.tostring(tfConfirmCount) + "/3\n" + consensusLevel
+    
+    tooltipText = "✅ " + labelSignalType + " SIGNAL\n\n" +
+                  "Consensus: " + str.tostring(tfConfirmCount) + "/3 (" + consensusLevel + ")\n\n" +
+                  confirmList + "\n\n" +
+                  "Score: " + str.tostring(sellScore) + "/28\n" +
+                  "Trend: " + (trendConfirmsSell ? "BEARISH" : "NEUTRAL") + "\n" +
+                  "Volume: " + (volumeZScore > 0 ? "HIGH" : "NORMAL") + "\n\n" +
+                  "⚡ 3/3 = Full size | 2/3 = Half size | 1/3 = Watch only"
+    label.new(bar_index, high, signalText, style=label.style_label_down, color=labelColor, textcolor=color.black, size=size.normal, tooltip=tooltipText)
+
+// ORB markers (Fisher's rule: only fires with high volume)
+plotshape(orbBreakoutLong, "ORB Long", shape.triangleup, location.belowbar, 
+          color.new(color.lime, 0), text="ORB↑", size=size.tiny)
+plotshape(orbBreakdownShort, "ORB Short", shape.triangledown, location.abovebar, 
+          color.new(color.red, 0), text="ORB↓", size=size.tiny)
+
+// ORB Quadrant Lines (for progressive exit visualization)
+plot(orbQ3High, "ORB Q3 (75%)", color=color.new(color.yellow, 20), linewidth=1, style=plot.style_line)
+plot(orbQ2High, "ORB Q2 (Midpoint)", color=color.new(color.orange, 20), linewidth=2, style=plot.style_line)
+plot(orbQ1High, "ORB Q1 (25%)", color=color.new(color.red, 30), linewidth=1, style=plot.style_line)
+
+// Add price labels ONCE when ORB completes, positioned at right edge based on timeframe
+if orbComplete and not orbComplete[1] and not na(orbQ3High) and not na(orbQ2High) and not na(orbQ1High)
+    // Calculate bars in a trading day (6.5 hours = 390 minutes)
+    tfMinutes = timeframe.in_seconds() / 60
+    barsInDay = math.floor(390 / tfMinutes)  // 390 minutes in trading day
+    labelOffset = barsInDay  // Position at end of day
+    
+    label.new(bar_index + labelOffset, orbQ3High, "Q3 " + str.tostring(orbQ3High, format.mintick), style=label.style_label_left, color=color.yellow, textcolor=color.black, size=size.small)
+    label.new(bar_index + labelOffset, orbQ2High, "Q2 " + str.tostring(orbQ2High, format.mintick), style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+    label.new(bar_index + labelOffset, orbQ1High, "Q1 " + str.tostring(orbQ1High, format.mintick), style=label.style_label_left, color=color.red, textcolor=color.white, size=size.small)
+
+
+
+
+
+
+
+// False breakout warnings (low volume = trap per Fisher) - DISABLED (reduces noise)
+// plotshape(orbFalseBreakoutLong, "False Breakout", shape.xcross, location.abovebar,
+//           color.new(color.orange, 0), text="FAKE", size=size.small)
+// plotshape(orbFalseBreakoutShort, "False Breakdown", shape.xcross, location.belowbar,
+//           color.new(color.orange, 0), text="FAKE", size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUXILIARY LABELS DISABLED (Option A: Remove Visual Noise)
+// ═══════════════════════════════════════════════════════════════════════════════
+// These small labels (VOL, TS, HG, P) are commented out to reduce chart clutter.
+// Only main entry signals (ORB or score ≥10) are shown above.
+// The strategies still contribute to scoring, but don't show individual labels.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Volume spike markers (climax volume = potential reversal)
+// plotshape(volumeSpike and close > open, "Volume Spike Bull (Institutional Buying)", shape.diamond, location.belowbar,
+//           color.new(color.yellow, 0), text="VOL", size=size.tiny)
+// plotshape(volumeSpike and close < open, "Volume Spike Bear (Institutional Selling)", shape.diamond, location.abovebar,
+//           color.new(color.yellow, 0), text="VOL", size=size.tiny)
+
+// Turtle Soup markers (failed breakout reversals - Raschke)
+// plotshape(turtleSoupLongFiltered and highVolume, "Turtle Soup Long (Failed Breakdown Reversal)", shape.circle, location.belowbar,
+//           color.new(color.aqua, 0), text="TS↑", size=size.tiny)
+// plotshape(turtleSoupLongFiltered and lowVolume, "Turtle Soup Long (Low Volume Warning)", shape.circle, location.belowbar,
+//           color.new(color.orange, 0), text="TS↑⚠", size=size.tiny)
+// plotshape(turtleSoupShortFiltered and highVolume, "Turtle Soup Short (Failed Breakout Reversal)", shape.circle, location.abovebar,
+//           color.new(color.red, 0), text="TS↓", size=size.tiny)
+// plotshape(turtleSoupShortFiltered and lowVolume, "Turtle Soup Short (Low Volume Warning)", shape.circle, location.abovebar,
+//           color.new(color.orange, 0), text="TS↓⚠", size=size.tiny)
+
+// Holy Grail markers (ADX + EMA pullback - Raschke)
+// plotshape(holyGrailLongFiltered and highVolume, "Holy Grail Long (ADX>30 + EMA Pullback)", shape.square, location.belowbar,
+//           color.new(color.purple, 0), text="HG↑", size=size.tiny)
+// plotshape(holyGrailLongFiltered and lowVolume, "Holy Grail Long (Low Volume Warning)", shape.square, location.belowbar,
+//           color.new(color.orange, 0), text="HG↑⚠", size=size.tiny)
+// plotshape(holyGrailShortFiltered and highVolume, "Holy Grail Long (ADX+30 + EMA Pullback)", shape.square, location.abovebar,
+//           color.new(color.fuchsia, 0), text="HG↓", size=size.tiny)
+// plotshape(holyGrailShortFiltered and lowVolume, "Holy Grail Short (Low Volume Warning)", shape.square, location.abovebar,
+//           color.new(color.orange, 0), text="HG↓⚠", size=size.tiny)
+
+// Pivot bounce/rejection markers (Williams - PDH/PDL/Pivot levels)
+// plotshape(pivotBounceLongFiltered and highVolume, "Pivot Bounce Long (Support at PDL/S1/S2)", shape.cross, location.belowbar,
+//           color.new(color.lime, 0), text="P↑", size=size.tiny)
+// plotshape(pivotBounceLongFiltered and lowVolume, "Pivot Bounce Long (Low Volume Warning)", shape.cross, location.belowbar,
+//           color.new(color.orange, 0), text="P↑⚠", size=size.tiny)
+// plotshape(pivotRejectionShortFiltered and highVolume, "Pivot Rejection Short (Resistance at PDH/R1/R2)", shape.cross, location.abovebar,
+//           color.new(color.red, 0), text="P↓", size=size.tiny)
+// plotshape(pivotRejectionShortFiltered and lowVolume, "Pivot Rejection Short (Low Volume Warning)", shape.cross, location.abovebar,
+//           color.new(color.orange, 0), text="P↓⚠", size=size.tiny)
+
+// ================================================================================================
+// PART 9: DASHBOARD
+// ================================================================================================
+
+// ================================================================================================
+// PROFESSIONAL DASHBOARDS - Two separate dashboards for different trading sessions
+// ================================================================================================
+// Dashboard 1: PRE/POST MARKET (ETH) - Planning & Preparation
+// Dashboard 2: REGULAR HOURS (RTH) - Execution & Trade Management
+
+var table dashboard = table.new(position.top_right, 3, 20, bgcolor=color.new(color.black, 0), border_width=2, border_color=color.blue)
+
+// Update dashboard on every bar
+if true
+    // Clear previous dashboard
+    table.clear(dashboard, 0, 0, 2, 19)
+    
+    // ============================================================================
+    // DASHBOARD SELECTION: Show different dashboard based on session
+    // ============================================================================
+    if isPreMarket or isPostMarket
+        drawPreMarketDashboard(dashboard, isPreMarket, currentTimeHHMM, close)
+    
+    // ============================================================================
+    // REGULAR DASHBOARD (shown during RTH and as fallback)
+    // ============================================================================
+    if not (isPreMarket or isPostMarket)
+        // Header for RTH
+        table.cell(dashboard, 0, 0, "🎯 LONG", text_color=color.white, 
+                   bgcolor=color.new(color.green, 0), text_size=size.normal)
+        table.cell(dashboard, 1, 0, "ES1! PRO", text_color=color.yellow, 
+                   bgcolor=color.new(color.blue, 0), text_size=size.small)
+        table.cell(dashboard, 2, 0, "🎯 SHORT", text_color=color.white, 
+                   bgcolor=color.new(color.red, 0), text_size=size.small)
+        
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // ROW 1: AI DECISION ROW - INSTANT VISUAL DECISION SYSTEM (MOST IMPORTANT!)
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // This row tells ANY viewer (human or AI) whether to GO LONG, GO SHORT / WAIT
+        table.cell(dashboard, 0, 1, longDecision, text_color=color.white, 
+                   bgcolor=longDecisionColor, text_size=size.small,
+                   tooltip="LONG DECISION\n\n🟢 ENTER NOW = At entry + volume\n⚠️ WAIT VOLUME = At entry, no volume\n✅ READY = Signal ready\n⏳ WAIT = No signal\n🚫 BLOCKED = Wrong quadrant")
+        
+        table.cell(dashboard, 1, 1, "🚦 TRADE DECISION 🚦", text_color=color.yellow, 
+                   bgcolor=color.new(color.black, 0), text_size=size.small,
+                   tooltip="INSTANT VISUAL DECISION SYSTEM\n━━━━━━━━━━━━━━━━━━━━━━━\n\n🎯 HOW QUADRANTS WORK:\n\nAfter ORB completes, the range is divided into 4 equal parts:\n\nQ4 (75-100%): STRONGEST BULL ZONE\n├─ Best for longs\n├─ Institutions accumulated here\n└─ +2 score points\n\nQ3 (50-75%): GOOD BULL ZONE\n├─ Longs favored\n└─ +1 score point\n\nQ2 (25-50%): GOOD BEAR ZONE\n├─ Shorts favored\n└─ +1 score point\n\nQ1 (0-25%): STRONGEST BEAR ZONE\n├─ Best for shorts\n├─ Institutions distributed here\n└─ +2 score points\n\n⚠️ QUADRANT PENALTIES:\n• Long in Q1/Q2 = -2 points (fighting bias)\n• Short in Q3/Q4 = -2 points (fighting bias)\n\n━━━━━━━━━━━━━━━━━━━━━━━\n📊 DECISION SIGNALS:\n\n🟢 GO LONG! (Q4) = Perfect long setup\n🟡 GO LONG (Q3) = Good long setup\n🔴 GO SHORT! (Q1) = Perfect short setup\n🟠 GO SHORT (Q2) = Good short setup\n🚫 BLOCKED = Wrong quadrant (don't trade)\n⏳ WAIT = ORB not ready or no signal\n\n━━━━━━━━━━━━━━━━━━━━━━━\n📚 MARK FISHER RULES:\n\n1. 'Only trade WITH the quadrant'\n2. 'Q4 longs and Q1 shorts have edge'\n3. 'Midpoint is the decision line'\n4. 'Wrong quadrant = stay out'\n\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ AI-READY FORMAT:\n\nScreenshot this dashboard → AI can instantly determine:\n• ORB levels\n• Current quadrant\n• Score (buy vs sell)\n• Final decision (GO/WAIT/BLOCKED)\n\nOne glance = One decision!")
+        
+        table.cell(dashboard, 2, 1, shortDecision, text_color=color.white, 
+                   bgcolor=shortDecisionColor, text_size=size.small,
+                   tooltip="SHORT DECISION\n\n🟢 ENTER NOW = At entry + volume\n⚠️ WAIT VOLUME = At entry, no volume\n✅ READY = Signal ready\n⏳ WAIT = No signal\n🚫 BLOCKED = Wrong quadrant")
+        
+        // TRADE BIAS - Which side is favored RIGHT NOW
+        longBias = buyScore > sellScore and (uptrendIntraday or aboveVWAP or orbBreakoutLong)
+        shortBias = sellScore > buyScore and (downtrendIntraday or not aboveVWAP or orbBreakdownShort)
+        neutralBias = not longBias and not shortBias
+        
+        biasText = longBias ? "🟢 LONG FAVORED" : shortBias ? "🔴 SHORT FAVORED" : "⚪ NEUTRAL"
+        biasColor = longBias ? color.new(color.green, 0) : shortBias ? color.new(color.red, 0) : color.new(color.gray, 0)
+        
+        // Build detailed tooltip explaining WHY this bias based on technical analysis
+        biasTooltip = ""
+        if longBias
+            biasTooltip := "LONG SETUP FAVORED\n\n📊 SCORE:\n✅ Long: " + str.tostring(buyScore) + "/28 pts\n❌ Short: " + str.tostring(sellScore) + "/28 pts\n\n🎯 TECHNICAL REASONS:\n"
+            biasTooltip := biasTooltip + (uptrendIntraday ? "✅ Uptrend (EMA 9>21>50)\n" : "")
+            biasTooltip := biasTooltip + (aboveVWAP ? "✅ Price > VWAP (bullish)\n" : "")
+            biasTooltip := biasTooltip + (orbLongSignal ? "✅ ORB Breakout Signal\n" : orbComplete and close > orbHigh ? "✅ Price > ORB High\n" : "")
+            biasTooltip := biasTooltip + (pullbackEntryLong ? "✅ Pullback Entry (best odds)\n" : "")
+            biasTooltip := biasTooltip + (momentumConfirmsLong ? "✅ Momentum Confirmed (MACD+RSI)\n" : "")
+            biasTooltip := biasTooltip + (isMorningSession ? "✅ Morning Session (best time)\n" : "")
+            biasTooltip := biasTooltip + (failedBreakoutBearTrap ? "✅ Failed Bear Trap (reversal)\n" : "")
+            biasTooltip := biasTooltip + "\n📚 Fisher/Raschke: Trade WITH the bias"
+        else if shortBias
+            biasTooltip := "SHORT SETUP FAVORED\n\n📊 SCORE:\n❌ Long: " + str.tostring(buyScore) + "/28 pts\n✅ Short: " + str.tostring(sellScore) + "/28 pts\n\n🎯 TECHNICAL REASONS:\n"
+            biasTooltip := biasTooltip + (downtrendIntraday ? "✅ Downtrend (EMA 9<21<50)\n" : "")
+            biasTooltip := biasTooltip + (not aboveVWAP ? "✅ Price < VWAP (bearish)\n" : "")
+            biasTooltip := biasTooltip + (orbShortSignal ? "✅ ORB Breakdown Signal\n" : orbComplete and close < orbLow ? "✅ Price < ORB Low\n" : "")
+            biasTooltip := biasTooltip + (pullbackEntryShort ? "✅ Pullback Entry (best odds)\n" : "")
+            biasTooltip := biasTooltip + (momentumConfirmsShort ? "✅ Momentum Confirmed (MACD+RSI)\n" : "")
+            biasTooltip := biasTooltip + (isMorningSession ? "✅ Morning Session (best time)\n" : "")
+            biasTooltip := biasTooltip + (failedBreakoutBullTrap ? "✅ Failed Bull Trap (reversal)\n" : "")
+            biasTooltip := biasTooltip + "\n📚 Fisher/Raschke: Trade WITH the bias"
+        else
+            biasTooltip := "NEUTRAL / NO CLEAR BIAS\n\n📊 SCORE:\nLong: " + str.tostring(buyScore) + "/28 pts\nShort: " + str.tostring(sellScore) + "/28 pts\n\n⚠️ Scores too close or insufficient\n\n🎯 WAIT FOR:\n• ORB breakout (PRIMARY)\n• Score ≥8 points (SECONDARY)\n• RTH hours only\n\n📚 Raschke: 'Don't force trades'\n📚 Elder: 'Best trade is no trade'"
+        
+        table.cell(dashboard, 0, 2, longBias ? "TRADE ▶" : "", text_color=color.white, 
+                   bgcolor=longBias ? color.new(color.green, 30) : color.new(color.gray, 80), text_size=size.small)
+        table.cell(dashboard, 1, 2, biasText, text_color=color.white, 
+                   bgcolor=biasColor, text_size=size.normal,
+                   tooltip=biasTooltip)
+        table.cell(dashboard, 2, 2, shortBias ? "◀ TRADE" : "", text_color=color.white, 
+                   bgcolor=shortBias ? color.new(color.red, 30) : color.new(color.gray, 80), text_size=size.small)
+        
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // ROW 3: FAKE BREAKOUT WARNING (Only shows when detected - CRITICAL!)
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // Visual warning to prevent entering low-probability trades
+        
+        // Show fake breakout warnings if detected
+        fakeLongDisplay = fakeBreakoutLongDetected ? (orbNearHighLong ? "⚠️ RISKY\nLONG!" : "⚠️ FAKE\nBREAK!") : ""
+        fakeShortDisplay = fakeBreakoutShortDetected ? (orbNearLowShort ? "⚠️ RISKY\nSHORT!" : "⚠️ FAKE\nBREAK!") : ""
+        fakeCenterText = fakeBreakoutLongDetected ? (orbNearHighLong ? "⚠️ RISKY LONG SETUP ⚠️" : "⚠️ LONG TRAP ⚠️") : fakeBreakoutShortDetected ? (orbNearLowShort ? "⚠️ RISKY SHORT SETUP ⚠️" : "⚠️ SHORT TRAP ⚠️") : ""
+        showFakeWarning = fakeBreakoutLongDetected or fakeBreakoutShortDetected
+        
+        table.cell(dashboard, 0, 3, fakeLongDisplay, text_color=color.white, 
+                   bgcolor=fakeBreakoutLongDetected ? color.new(color.orange, 0) : color.new(color.gray, 90), 
+                   text_size=size.small,
+                   tooltip=fakeBreakoutLongDetected ? fakeBreakoutLongWarning : "")
+        
+        table.cell(dashboard, 1, 3, fakeCenterText, text_color=color.yellow, 
+                   bgcolor=showFakeWarning ? color.new(color.red, 20) : color.new(color.gray, 90), 
+                   text_size=size.small,
+                   tooltip=showFakeWarning ? ("FAKE BREAKOUT DETECTED!\n\n" + 
+                          (fakeBreakoutLongDetected ? fakeBreakoutLongWarning : fakeBreakoutShortWarning) +
+                          "\n⚠️ HIGH PROBABILITY OF REVERSAL\n" +
+                          "⚠️ DO NOT ENTER THIS TRADE\n" +
+                          "⚠️ Wait for better setup\n\n" +
+                          "Fisher: 'The best trades have everything aligned'\n" +
+                          "Raschke: 'When in doubt, stay out'") : "")
+        
+        table.cell(dashboard, 2, 3, fakeShortDisplay, text_color=color.white, 
+                   bgcolor=fakeBreakoutShortDetected ? color.new(color.orange, 0) : color.new(color.gray, 90), 
+                   text_size=size.small,
+                   tooltip=fakeBreakoutShortDetected ? fakeBreakoutShortWarning : "")
+        
+        // Current Price (Row 4 now)
+        table.cell(dashboard, 0, 4, str.tostring(close, format.mintick), 
+                   text_color=color.yellow, bgcolor=color.new(color.gray, 50), text_size=size.small)
+        table.cell(dashboard, 1, 4, "💰 NOW", text_color=color.yellow, 
+                   bgcolor=color.new(color.gray, 0), text_size=size.tiny)
+        table.cell(dashboard, 2, 4, str.tostring(close, format.mintick), 
+                   text_color=color.yellow, bgcolor=color.new(color.gray, 50), text_size=size.small)
+        
+        // ENTRY LEVEL (breakout level, NOT current price!)
+        entryTextLong = orbComplete ? str.tostring(entryLevelLong, format.mintick) : "Wait ORB"
+        entryTextShort = orbComplete ? str.tostring(entryLevelShort, format.mintick) : "Wait ORB"
+        
+        orbEndTimeStr = not na(orbEndTime) ? str.tostring(orbEndTime, "####") : "N/A"
+        
+        // Calculate risk in POINTS for display (no dollars)
+        riskPointsDisplay = orbComplete ? str.tostring(actualStopDistance, format.mintick) + " pts" : "---"
+        
+        entryTooltipLong = orbComplete ? ("🎯 LONG TRADE PLAN\n\n📍 Entry: " + str.tostring(entryLevelLong, format.mintick) + "\n🛑 Stop: " + str.tostring(stopLevelLong, format.mintick) + "\n📏 Risk: " + riskPointsDisplay + "\n📊 Contracts: " + str.tostring(contractsToTrade, "#") + "\n\n✅ Fisher: Enter AT breakout level\n✅ Place limit order NOW") : "⏰ WAITING FOR ORB\n\nPlan will be ready at " + orbEndTimeStr
+        entryTooltipShort = orbComplete ? ("🎯 SHORT TRADE PLAN\n\n📍 Entry: " + str.tostring(entryLevelShort, format.mintick) + "\n🛑 Stop: " + str.tostring(stopLevelShort, format.mintick) + "\n📏 Risk: " + riskPointsDisplay + "\n📊 Contracts: " + str.tostring(contractsToTrade, "#") + "\n\n✅ Fisher: Enter AT breakout level\n✅ Place limit order NOW") : "⏰ WAITING FOR ORB\n\nPlan will be ready at " + orbEndTimeStr
+        
+        table.cell(dashboard, 0, 5, entryTextLong, text_color=color.white, 
+                   bgcolor=color.new(color.blue, 30), text_size=size.small,
+                   tooltip=entryTooltipLong)
+        table.cell(dashboard, 1, 5, "📍 ENTRY", text_color=color.white, 
+                   bgcolor=color.new(color.blue, 0), text_size=size.tiny,
+                   tooltip="Entry level = ORB breakout\nWait for VOLUME!")
+        table.cell(dashboard, 2, 5, entryTextShort, text_color=color.white, 
+                   bgcolor=color.new(color.blue, 30), text_size=size.small,
+                   tooltip=entryTooltipShort)
+        
+        // STATUS (WAIT vs AT ENTRY vs READY)
+        statusLong = "⏳ WAIT"
+        statusShort = "⏳ WAIT"
+        statusColorLong = color.new(color.orange, 30)
+        statusColorShort = color.new(color.orange, 30)
+        
+        // NEVER show "ENTER NOW" during force exit period!
+        if isForceExit
+            statusLong := "🚫 NO NEW ENTRIES"
+            statusColorLong := color.new(color.red, 0)
+            statusShort := "🚫 NO NEW ENTRIES"
+            statusColorShort := color.new(color.red, 0)
+        else if orbComplete
+            // NEW: Show entry window status (window opened, waiting for volume)
+            if longEntryWindowOpen
+                if highVolume
+                    statusLong := "🟢 ENTER NOW!"
+                    statusColorLong := color.new(color.green, 0)
+                else
+                    barsRemaining = maxEntryWindowBars - barsInLongWindow
+                    statusLong := "⏰ WAIT VOL (" + str.tostring(barsRemaining) + " bars left)"
+                    statusColorLong := color.new(color.yellow, 0)
+            else if atEntryLong
+                if highVolume
+                    statusLong := "🟢 ENTER NOW!"
+                    statusColorLong := color.new(color.green, 0)
+                else
+                    statusLong := "⚠️ AT ENTRY (WAIT VOL)"
+                    statusColorLong := color.new(color.orange, 0)
+            else if distanceToEntryLong < 0  // distance < 0 means BELOW entry (waiting for move UP)
+                statusLong := "⏳ Wait " + str.tostring(math.abs(distanceToEntryLong), format.mintick) + " pts ↑"
+            else if distanceToEntryLong > entryTolerance  // Way above entry - missed it!
+                statusLong := "❌ MISSED (+" + str.tostring(distanceToEntryLong, format.mintick) + " pts)"
+                statusColorLong := color.new(color.gray, 0)
+            else
+                statusLong := "✅ ABOVE ENTRY"
+            
+            // NEW: Show entry window status for short
+            if shortEntryWindowOpen
+                if highVolume
+                    statusShort := "🟢 ENTER NOW!"
+                    statusColorShort := color.new(color.red, 0)
+                else
+                    barsRemaining = maxEntryWindowBars - barsInShortWindow
+                    statusShort := "⏰ WAIT VOL (" + str.tostring(barsRemaining) + " bars left)"
+                    statusColorShort := color.new(color.yellow, 0)
+            else if atEntryShort
+                if highVolume
+                    statusShort := "🟢 ENTER NOW!"
+                    statusColorShort := color.new(color.red, 0)
+                else
+                    statusShort := "⚠️ AT ENTRY (WAIT VOL)"
+                    statusColorShort := color.new(color.orange, 0)
+            else if distanceToEntryShort < 0  // distance < 0 means ABOVE entry (waiting for move DOWN)
+                statusShort := "⏳ Wait " + str.tostring(math.abs(distanceToEntryShort), format.mintick) + " pts ↓"
+            else if distanceToEntryShort > entryTolerance  // Way below entry - missed it!
+                statusShort := "❌ MISSED (+" + str.tostring(distanceToEntryShort, format.mintick) + " pts)"
+                statusColorShort := color.new(color.gray, 0)
+            else
+                statusShort := "✅ BELOW ENTRY"
+        else
+            orbEndTimeFormatted = not na(orbEndTime) ? str.tostring(orbEndTime, "####") : "N/A"
+            statusLong := "⏳ Wait ORB (" + orbEndTimeFormatted + ")"
+            statusShort := "⏳ Wait ORB (" + orbEndTimeFormatted + ")"
+        
+        // Build detailed tooltips for STATUS
+        statusTooltipLong = "LONG ENTRY STATUS\n\n"
+        statusTooltipShort = "SHORT ENTRY STATUS\n\n"
+        
+        if longEntryWindowOpen
+            htfVolRatio = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+            ctfVolRatio = recentAvgVolume > 0 ? volume3BarAvg / recentAvgVolume : 0  // Use RECENT avg (hybrid)
+            volumeNeeded = volumeMultiplier
+            statusTooltipLong := statusTooltipLong + "🚪 ENTRY WINDOW OPEN\n\n✅ Price broke above: " + str.tostring(entryLevelLong, format.mintick) + "\n⏰ Time remaining: " + str.tostring(maxEntryWindowBars - barsInLongWindow) + " bars\n\nVOLUME ANALYSIS (Hybrid System):\n📊 15-Min HTF: " + str.tostring(htfVolRatio, "#.##") + "× recent " + (higherTFVolumeConfirmed ? "✅" : "⚠️") + "\n📊 5-Min 3-Bar: " + str.tostring(ctfVolRatio, "#.##") + "× recent " + (currentTFVolumeConfirmed ? "✅" : "⚠️") + "\n🎯 Required: " + str.tostring(volumeNeeded, "#.##") + "× recent (time-adjusted)\n\n" + (highVolume ? "✅ VOLUME CONFIRMED → ENTER NOW!" : "⚠️ Waiting for volume confirmation\n\n📍 ACTION: Place limit at " + str.tostring(entryLevelLong, format.mintick))
+        else if atEntryLong
+            statusTooltipLong := statusTooltipLong + "📍 Price AT entry level\n\nEntry: " + str.tostring(entryLevelLong, format.mintick) + "\nCurrent: " + str.tostring(close, format.mintick) + "\n\n" + (highVolume ? "✅ Volume confirmed → ENTER NOW!" : "⚠️ Wait for volume spike")
+        else if distanceToEntryLong < 0
+            statusTooltipLong := statusTooltipLong + "⏳ WAITING FOR BREAKOUT\n\nEntry: " + str.tostring(entryLevelLong, format.mintick) + "\nCurrent: " + str.tostring(close, format.mintick) + "\nDistance: " + str.tostring(math.abs(distanceToEntryLong), format.mintick) + " pts below\n\n📍 ACTION: Wait for breakout above " + str.tostring(entryLevelLong, format.mintick)
+        else
+            statusTooltipLong := statusTooltipLong + "Current: " + statusLong
+        
+        if shortEntryWindowOpen
+            htfVolRatio = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+            ctfVolRatio = recentAvgVolume > 0 ? volume3BarAvg / recentAvgVolume : 0  // Use RECENT avg (hybrid)
+            volumeNeeded = volumeMultiplier
+            statusTooltipShort := statusTooltipShort + "🚪 ENTRY WINDOW OPEN\n\n✅ Price broke below: " + str.tostring(entryLevelShort, format.mintick) + "\n⏰ Time remaining: " + str.tostring(maxEntryWindowBars - barsInShortWindow) + " bars\n\nVOLUME ANALYSIS (Hybrid System):\n📊 15-Min HTF: " + str.tostring(htfVolRatio, "#.##") + "× recent " + (higherTFVolumeConfirmed ? "✅" : "⚠️") + "\n📊 5-Min 3-Bar: " + str.tostring(ctfVolRatio, "#.##") + "× recent " + (currentTFVolumeConfirmed ? "✅" : "⚠️") + "\n🎯 Required: " + str.tostring(volumeNeeded, "#.##") + "× recent (time-adjusted)\n\n" + (highVolume ? "✅ VOLUME CONFIRMED → ENTER NOW!" : "⚠️ Waiting for volume confirmation\n\n📍 ACTION: Place limit at " + str.tostring(entryLevelShort, format.mintick))
+        else if atEntryShort
+            statusTooltipShort := statusTooltipShort + "📍 Price AT entry level\n\nEntry: " + str.tostring(entryLevelShort, format.mintick) + "\nCurrent: " + str.tostring(close, format.mintick) + "\n\n" + (highVolume ? "✅ Volume confirmed → ENTER NOW!" : "⚠️ Wait for volume spike")
+        else if distanceToEntryShort < 0
+            statusTooltipShort := statusTooltipShort + "⏳ WAITING FOR BREAKDOWN\n\nEntry: " + str.tostring(entryLevelShort, format.mintick) + "\nCurrent: " + str.tostring(close, format.mintick) + "\nDistance: " + str.tostring(math.abs(distanceToEntryShort), format.mintick) + " pts above\n\n📍 ACTION: Wait for breakdown below " + str.tostring(entryLevelShort, format.mintick)
+        else
+            statusTooltipShort := statusTooltipShort + "Current: " + statusShort
+        
+        table.cell(dashboard, 0, 6, statusLong, text_color=color.white, 
+                   bgcolor=statusColorLong, text_size=size.tiny, tooltip=statusTooltipLong)
+        table.cell(dashboard, 1, 6, "📊 STATUS", text_color=color.white, 
+                   bgcolor=color.new(color.gray, 0), text_size=size.tiny,
+                   tooltip="Entry window opens when price breaks ORB\nWait for volume confirmation")
+        table.cell(dashboard, 2, 6, statusShort, text_color=color.white, 
+                   bgcolor=statusColorShort, text_size=size.tiny, tooltip=statusTooltipShort)
+        
+        // STOP - Row 7 (all 3 columns in ONE row)
+        // Show if using quadrant stop (tighter) vs traditional stop
+        // Stop type indicator for dashboard
+        stopTypeLong = useTightStops ? " (TIGHT)" : " (WIDE)"
+        stopTypeShort = useTightStops ? " (TIGHT)" : " (WIDE)"
+        
+        stopTextLong = orbComplete ? str.tostring(stopLevelLong, format.mintick) + " ↓" : "---"
+        stopTextShort = orbComplete ? str.tostring(stopLevelShort, format.mintick) + " ↑" : "---"
+        
+        stopTooltipLong = orbComplete ? ("LONG STOP\n\nStop: " + str.tostring(stopLevelLong, format.mintick) + "\nRisk: " + str.tostring(actualStopDistance, format.mintick) + " pts\n\n" + (useTightStops ? "🎯 TIGHT STOP (Just below ORB High)\n✅ Better R:R (5-8 pts risk)\n✅ Raschke: 'Exit if price re-enters range'\n✅ Can re-enter if breakout resumes\n\n" : "📏 WIDE STOP (Below ORB Low)\n✅ More room to breathe\n✅ Fisher: 'Opposite ORB level'\n✅ Fewer false stops\n\n")) : "WAITING FOR ORB\n\nStop levels set after ORB completes"
+        stopTooltipShort = orbComplete ? ("SHORT STOP\n\nStop: " + str.tostring(stopLevelShort, format.mintick) + "\nRisk: " + str.tostring(actualStopDistance, format.mintick) + " pts\n\n" + (useTightStops ? "🎯 TIGHT STOP (Just above ORB Low)\n✅ Better R:R (5-8 pts risk)\n✅ Raschke: 'Exit if price re-enters range'\n✅ Can re-enter if breakdown resumes\n\n" : "📏 WIDE STOP (Above ORB High)\n✅ More room to breathe\n✅ Fisher: 'Opposite ORB level'\n✅ Fewer false stops\n\n")) : "WAITING FOR ORB\n\nStop levels set after ORB completes"
+        
+        table.cell(dashboard, 0, 7, stopTextLong, text_color=color.white, 
+                   bgcolor=color.new(color.red, 30), text_size=size.small,
+                   tooltip=stopTooltipLong)
+        table.cell(dashboard, 1, 7, "🛑 STOP", text_color=color.white, 
+                   bgcolor=color.new(color.red, 0), text_size=size.tiny,
+                   tooltip="STOP PLACEMENT\n\n🎯 TIGHT STOPS (Current):\n• Long: Just below ORB High\n• Short: Just above ORB Low\n• Better R:R (5-8 pts risk)\n• Raschke/Crabel method\n\n📏 WIDE STOPS (Optional):\n• Long: Below ORB Low\n• Short: Above ORB High\n• More breathing room\n• Fisher's traditional method")
+        table.cell(dashboard, 2, 7, stopTextShort, text_color=color.white, 
+                   bgcolor=color.new(color.red, 30), text_size=size.small,
+                   tooltip=stopTooltipShort)
+        
+        // TARGET - Row 8 (all 3 columns in ONE row)
+        targetTextLong = orbComplete ? str.tostring(targetLevelLong, format.mintick) + " ↑" : "---"
+        targetTextShort = orbComplete ? str.tostring(targetLevelShort, format.mintick) + " ↓" : "---"
+        
+        // Calculate target distances for display
+        targetDistToShowLong = orbComplete ? targetLevelLong - entryLevelLong : na
+        targetDistToShowShort = orbComplete ? entryLevelShort - targetLevelShort : na
+        
+        targetTooltipLong = orbComplete ? ("LONG TARGET\n\nTarget: " + str.tostring(targetLevelLong, format.mintick) + "\nDistance: " + str.tostring(targetDistToShowLong, format.mintick) + " pts\n\n✅ Fisher: 2× ORB range\n✅ R:R = " + str.tostring(rrLongRaw, "#.#") + ":1") : "WAITING FOR ORB\n\nTarget levels set after ORB completes"
+        targetTooltipShort = orbComplete ? ("SHORT TARGET\n\nTarget: " + str.tostring(targetLevelShort, format.mintick) + "\nDistance: " + str.tostring(targetDistToShowShort, format.mintick) + " pts\n\n✅ Fisher: 2× ORB range\n✅ R:R = " + str.tostring(rrShortRaw, "#.#") + ":1") : "WAITING FOR ORB\n\nTarget levels set after ORB completes"
+        
+        table.cell(dashboard, 0, 8, targetTextLong, text_color=color.white, 
+                   bgcolor=color.new(color.green, 30), text_size=size.small,
+                   tooltip=targetTooltipLong)
+        table.cell(dashboard, 1, 8, "🎯 TARGET", text_color=color.white, 
+                   bgcolor=color.new(color.green, 0), text_size=size.tiny,
+                   tooltip="Target = 2× ORB range")
+        table.cell(dashboard, 2, 8, targetTextShort, text_color=color.white, 
+                   bgcolor=color.new(color.green, 30), text_size=size.small,
+                   tooltip=targetTooltipShort)
+        
+        // R:R Ratio - Row 9 (all 3 columns in ONE row)
+        rrLong = orbComplete ? rrLongRaw : 0
+        rrShort = orbComplete ? rrShortRaw : 0
+        
+        entryQualityLong = orbComplete and goodRRLong and stopNotTooWide and orbRangeReasonable
+        entryQualityShort = orbComplete and goodRRShort and stopNotTooWide and orbRangeReasonable
+        
+        rrColorLong = entryQualityLong ? color.lime : color.red
+        rrColorShort = entryQualityShort ? color.lime : color.red
+        rrTextLong = entryQualityLong ? "✅" : "❌"
+        rrTextShort = entryQualityShort ? "✅" : "❌"
+        
+        rrDisplayLong = orbComplete ? str.tostring(rrLong, "#.#") + " " + rrTextLong : "---"
+        rrDisplayShort = orbComplete ? str.tostring(rrShort, "#.#") + " " + rrTextShort : "---"
+        
+        rrMinText = "R:R ≥ " + str.tostring(minRiskReward, "#.#") + ":1"
+        table.cell(dashboard, 0, 9, rrDisplayLong, 
+                   text_color=rrColorLong, text_size=size.small, 
+                   tooltip=entryQualityLong ? "GOOD ENTRY\n\n✅ " + rrMinText + "\n✅ Stop reasonable\n✅ ORB range good" : "POOR ENTRY\n\n❌ Skip this trade!\n\nWhy?\n" + (not goodRRLong ? "• R:R too low" : "") + (not stopNotTooWide ? "• Stop too wide" : "") + (not orbRangeReasonable ? "• ORB range bad" : ""))
+        table.cell(dashboard, 1, 9, "RISK:REWARD", text_color=color.white, 
+                   bgcolor=color.new(color.blue, 0), text_size=size.tiny,
+                   tooltip="📚 Elder: 'Never risk $1 to make $1'\n📚 Minimum " + str.tostring(minRiskReward, "#.#") + ":1 R:R required\n\nGood trade = Green check\nBad trade = Red X (skip!)")
+        table.cell(dashboard, 2, 9, rrDisplayShort, 
+                   text_color=rrColorShort, text_size=size.small,
+                   tooltip=entryQualityShort ? "GOOD ENTRY\n\n✅ " + rrMinText + "\n✅ Stop reasonable\n✅ ORB range good" : "POOR ENTRY\n\n❌ Skip this trade!\n\nWhy?\n" + (not goodRRShort ? "• R:R too low" : "") + (not stopNotTooWide ? "• Stop too wide" : "") + (not orbRangeReasonable ? "• ORB range bad" : ""))
+        
+        // MAX RISK - Row 10 (all 3 columns in ONE row)
+        // Show POINTS only (professional traders think in points, not dollars)
+        actualRiskPoints = orbComplete and not na(actualStopDistance) ? actualStopDistance : maxStopLossPoints
+        riskPerTradeText = str.tostring(actualRiskPoints, "#.#") + " pts"
+        riskTooltip = "STOP DISTANCE (This Trade)\n\n" + 
+                      "Stop: " + str.tostring(actualRiskPoints, "#.#") + " points\n" +
+                      "Max Risk: " + str.tostring(maxRiskPercent, "#.#") + "% account\n" +
+                      "Max Stop: " + str.tostring(maxStopLossPoints, "#.#") + " pts\n\n" +
+                      "📚 Fisher: 'Stop at opposite ORB level'\n" +
+                      "📚 Elder: 'Protect your capital first'"
+        
+        table.cell(dashboard, 0, 10, riskPerTradeText, text_color=color.yellow, text_size=size.tiny, tooltip=riskTooltip)
+        table.cell(dashboard, 1, 10, "MAX RISK", text_color=color.white, bgcolor=color.new(color.orange, 0), text_size=size.tiny)
+        table.cell(dashboard, 2, 10, str.tostring(maxRiskPercent, "#.#") + "% Acct", text_color=color.yellow, text_size=size.tiny)
+        
+        // SCORE - Row 11 (all 3 columns in ONE row)
+        // Build dynamic tooltips showing WHY this score (which strategies are active)
+        longScoreBreakdown = "LONG SCORE BREAKDOWN (" + str.tostring(buyScore) + "/28 pts)\n\n"
+        longScoreBreakdown := longScoreBreakdown + "🎯 ACTIVE SIGNALS:\n"
+        longScoreBreakdown := longScoreBreakdown + (orbLongSignal ? "✅ ORB Signal = 4 pts" + (pullbackEntryLong ? " (Pullback +2)" : "") + "\n" : orbComplete and close > orbHigh ? "• Price > ORB = 3 pts\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (failedBreakoutBearTrap ? "✅ Failed Bear Trap = 3 pts (fade reversal)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (vwapBuySignal or (close < vwapLower1 and close > close[1]) ? "✅ VWAP Mean-Reversion = 2 pts\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (vwapRsi2BuySignal ? "🔥 RSI(2) EXTREME = 3 pts (Connors)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (holyGrailLongFiltered ? "✅ Holy Grail = 2 pts\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (turtleSoupLongFiltered ? "✅ Turtle Soup = 2 pts\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (not na(pdl) and close > pdl and close < pdl * 1.002 ? "✅ Near PDL = 1 pt\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (aboveVWAP ? "✅ Above VWAP = 1 pt (bullish context)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (momentumConfirmsLong ? "✅ Momentum Confirmed = 1 pt (MACD+RSI)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (isMorningSession ? "✅ Morning Session = 1 pt (best odds)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + (inUpperHalf ? "✅ Quadrant Position = 1 pt (Q3/Q4 upper half)\n" : "")
+        longScoreBreakdown := longScoreBreakdown + "\n📚 ORB trades: Need 5+ pts\n📚 Non-ORB trades: Need 8+ pts\n📚 Raschke: 'Multiple confirmations = higher probability'"
+        
+        shortScoreBreakdown = "SHORT SCORE BREAKDOWN (" + str.tostring(sellScore) + "/28 pts)\n\n"
+        shortScoreBreakdown := shortScoreBreakdown + "🎯 ACTIVE SIGNALS:\n"
+        shortScoreBreakdown := shortScoreBreakdown + (orbShortSignal ? "✅ ORB Signal = 4 pts" + (pullbackEntryShort ? " (Pullback +2)" : "") + "\n" : orbComplete and close < orbLow ? "• Price < ORB = 3 pts\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (failedBreakoutBullTrap ? "✅ Failed Bull Trap = 3 pts (fade reversal)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (vwapSellSignal or (close > vwapUpper1 and close < close[1]) ? "✅ VWAP Mean-Reversion = 2 pts\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (vwapRsi2SellSignal ? "🔥 RSI(2) EXTREME = 3 pts (Connors)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (holyGrailShortFiltered ? "✅ Holy Grail = 2 pts\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (turtleSoupShortFiltered ? "✅ Turtle Soup = 2 pts\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (not na(pdh) and close < pdh and close > pdh * 0.998 ? "✅ Near PDH = 1 pt\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (not aboveVWAP ? "✅ Below VWAP = 1 pt (bearish context)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (momentumConfirmsShort ? "✅ Momentum Confirmed = 1 pt (MACD+RSI)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (isMorningSession ? "✅ Morning Session = 1 pt (best odds)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + (inLowerHalf ? "✅ Quadrant Position = 1 pt (Q1/Q2 lower half)\n" : "")
+        shortScoreBreakdown := shortScoreBreakdown + "\n📚 ORB trades: Need 5+ pts\n📚 Non-ORB trades: Need 8+ pts\n📚 Raschke: 'Multiple confirmations = higher probability'"
+        
+        scoreDisplayLong = orbComplete ? str.tostring(buyScore) + "/29" : "---"
+        scoreDisplayShort = orbComplete ? str.tostring(sellScore) + "/29" : "---"
+        scoreColorLong = orbComplete and buyScore >= 5 ? color.lime : color.gray
+        scoreColorShort = orbComplete and sellScore >= 5 ? color.red : color.gray
+        
+        table.cell(dashboard, 0, 19, scoreDisplayLong, 
+                   text_color=scoreColorLong, 
+                   bgcolor=color.new(color.green, 50), text_size=size.normal,
+                   tooltip=orbComplete ? longScoreBreakdown : "WAITING FOR ORB\n\nScores calculated after ORB completes")
+        table.cell(dashboard, 1, 19, "SCORE", text_color=color.white, 
+                   bgcolor=color.new(color.blue, 0), text_size=size.tiny,
+                   tooltip="🎯 PROFESSIONAL SIGNAL RULES\n\n✅ ORB TRADES (PRIMARY):\n• Need 5+ pts (ORB 4 + 1 confirm)\n• RTH hours only\n• Fisher: 'ORB is king'\n\n✅ NON-ORB TRADES (SECONDARY):\n• Need 8+ points\n• Multiple confirmations\n• RTH hours only\n\n❌ BLOCKED:\n• Pre-market signals\n• Single indicator trades\n• Low confluence setups")
+        table.cell(dashboard, 2, 19, scoreDisplayShort, 
+                   text_color=scoreColorShort, 
+                   bgcolor=color.new(color.red, 50), text_size=size.normal,
+                   tooltip=orbComplete ? shortScoreBreakdown : "WAITING FOR ORB\n\nScores calculated after ORB completes")
+        
+        // ACTIVE STRATEGIES - Row 12 (all 3 columns in ONE row)
+        activeStratsLong = ""
+        activeStratsLong := activeStratsLong + (orbBreakoutLong ? "ORB " : "")
+        activeStratsLong := activeStratsLong + (vwapBuySignal ? "VWAP " : "")
+        activeStratsLong := activeStratsLong + (pdlBounce ? "PDL " : "")
+        activeStratsLong := activeStratsLong + (turtleSoupLongFiltered ? "TS " : "")
+        activeStratsLong := activeStratsLong + (holyGrailLongFiltered ? "HG " : "")
+        activeStratsLong := activeStratsLong + (pivotBounceLongFiltered ? "PVT " : "")
+        activeStratsLong := activeStratsLong == "" ? "---" : activeStratsLong
+        
+        activeStratsShort = ""
+        activeStratsShort := activeStratsShort + (orbBreakdownShort ? "ORB " : "")
+        activeStratsShort := activeStratsShort + (vwapSellSignal ? "VWAP " : "")
+        activeStratsShort := activeStratsShort + (pdhRejection ? "PDH " : "")
+        activeStratsShort := activeStratsShort + (turtleSoupShortFiltered ? "TS " : "")
+        activeStratsShort := activeStratsShort + (holyGrailShortFiltered ? "HG " : "")
+        activeStratsShort := activeStratsShort + (pivotRejectionShortFiltered ? "PVT " : "")
+        activeStratsShort := activeStratsShort == "" ? "---" : activeStratsShort
+        
+        table.cell(dashboard, 0, 19, activeStratsLong, text_color=color.lime, text_size=size.tiny, tooltip="ACTIVE LONG STRATEGIES\n\nORB=Opening Range\nVWAP=Volume Weighted\nPDL=Prev Day Low\nTS=Turtle Soup (fake breakout)\nHG=Holy Grail (EMA + ADX)\nPVT=Pivot bounce")
+        table.cell(dashboard, 1, 19, "🎯 ACTIVE", text_color=color.gray, text_size=size.tiny)
+        table.cell(dashboard, 2, 19, activeStratsShort, text_color=color.red, text_size=size.tiny, tooltip="ACTIVE SHORT STRATEGIES\n\nORB=Opening Range\nVWAP=Volume Weighted\nPDH=Prev Day High\nTS=Turtle Soup (fake breakdown)\nHG=Holy Grail (EMA + ADX)\nPVT=Pivot rejection")
+        
+        // ORB INFO - Row 12-13 (two rows: ORB HIGH and ORB LOW)
+        if orbComplete
+            orbRangeText = str.tostring(orbRange, format.mintick) + " pts"
+            orbTooltip = "OPENING RANGE BREAKOUT\n\n📚 Fisher: First " + str.tostring(orbMinutes, "#") + " min sets the tone\n\nORB High: " + str.tostring(orbHigh, format.mintick) + "\nORB Low: " + str.tostring(orbLow, format.mintick) + "\nRange: " + str.tostring(orbRange, format.mintick) + " pts\n\nWHY THIS WORKS:\n✅ Institutions test supply/demand\n✅ Breakout = direction commitment\n✅ Range predicts volatility"
+            
+            table.cell(dashboard, 0, 19, "ORB HIGH", text_color=color.white, text_size=size.tiny)
+            table.cell(dashboard, 1, 19, str.tostring(orbHigh, format.mintick), text_color=color.lime, text_size=size.tiny, tooltip=orbTooltip)
+            table.cell(dashboard, 2, 19, orbRangeText, text_color=color.yellow, text_size=size.tiny, tooltip="ORB Range Quality\n\nIdeal: 10-40 pts\nToo small (<5): choppy\nToo large (>80): volatile\n\nCurrent: " + str.tostring(orbRange, format.mintick) + " pts")
+            
+            table.cell(dashboard, 0, 19, "ORB LOW", text_color=color.white, text_size=size.tiny)
+            table.cell(dashboard, 1, 19, str.tostring(orbLow, format.mintick), text_color=color.red, text_size=size.tiny, tooltip=orbTooltip)
+            table.cell(dashboard, 2, 19, "Range", text_color=color.gray, text_size=size.tiny)
+            
+            // QUADRANT POSITION - Row 14 (shows current quadrant)
+            quadrantText = aboveORB ? "ABOVE ORB" : inQ4 ? "Q4 (75-100%)" : inQ3 ? "Q3 (50-75%)" : inQ2 ? "Q2 (25-50%)" : inQ1 ? "Q1 (0-25%)" : belowORB ? "BELOW ORB" : "---"
+            quadrantColor = aboveORB ? color.lime : inQ4 ? color.new(color.lime, 30) : inQ3 ? color.new(color.yellow, 0) : inQ2 ? color.new(color.orange, 0) : inQ1 ? color.new(color.red, 30) : belowORB ? color.red : color.gray
+            quadrantBias = (inQ4 or inQ3) ? "BULLISH" : (inQ2 or inQ1) ? "BEARISH" : aboveORB ? "BULLISH" : belowORB ? "BEARISH" : "NEUTRAL"
+            quadrantTooltip = "QUADRANT POSITION\n\nCurrent: " + quadrantText + "\nBias: " + quadrantBias + "\n\nQuadrant zones:\n• ABOVE ORB = Breakout (bullish)\n• Q4 (75-100%) = Strong zone\n• Q3 (50-75%) = Upper support\n• Q2 (25-50%) = Lower resistance\n• Q1 (0-25%) = Weak zone\n• BELOW ORB = Breakdown (bearish)\n\n📚 Fisher: 'Position matters'\n📚 Raschke: 'Trade within the range'"
+            
+            table.cell(dashboard, 0, 19, "QUADRANT", text_color=color.white, text_size=size.tiny)
+            table.cell(dashboard, 1, 19, quadrantText, text_color=quadrantColor, text_size=size.tiny, tooltip=quadrantTooltip)
+            table.cell(dashboard, 2, 19, quadrantBias, text_color=quadrantColor, text_size=size.tiny, tooltip=quadrantTooltip)
+        else
+            table.cell(dashboard, 0, 19, "ORB", text_color=color.white, text_size=size.tiny)
+            orbStartFormatted = not na(orbStartTime) ? str.tostring(orbStartTime, "####") : "N/A"
+            orbEndFormatted = not na(orbEndTime) ? str.tostring(orbEndTime, "####") : "N/A"
+            table.cell(dashboard, 1, 19, "Building...", text_color=color.orange, text_size=size.tiny, tooltip="ORB BUILDING NOW\n\nWait until " + orbEndFormatted + "\n\nWatching first " + str.tostring(orbMinutes, "#") + " min of ORB session (" + orbStartFormatted + "-" + orbEndFormatted + ")\n\n📚 Fisher: 'Be patient, let the range complete'")
+            table.cell(dashboard, 2, 19, orbEndFormatted, text_color=color.yellow, text_size=size.tiny)
+        
+        // VWAP - Row 15 (all 3 columns in ONE row)
+        vwapTooltip = "VOLUME WEIGHTED AVG PRICE\n\n📚 Institutional anchor point\n\nVWAP: " + str.tostring(vwap, format.mintick) + "\nPrice " + (aboveVWAP ? "ABOVE" : "BELOW") + " VWAP\n\nWHY IT MATTERS:\n✅ Institutions use for execution\n✅ Above = Buyers in control\n✅ Below = Sellers in control\n✅ Mean reversion at ±2σ"
+        
+        table.cell(dashboard, 0, 19, "VWAP", text_color=color.white, text_size=size.tiny)
+        table.cell(dashboard, 1, 19, str.tostring(vwap, format.mintick), text_color=color.yellow, text_size=size.tiny, tooltip=vwapTooltip)
+        table.cell(dashboard, 2, 19, aboveVWAP ? "ABOVE ✓" : "BELOW ✗", text_color=aboveVWAP ? color.lime : color.red, text_size=size.tiny, tooltip="Price vs VWAP\n\n" + (aboveVWAP ? "ABOVE = Bullish context\nBuyers winning\n\n✅ Long setups favored" : "BELOW = Bearish context\nSellers winning\n\n✅ Short setups favored"))
+        
+        // Previous Day Levels - Row 16-17 (two rows: PDH and PDL)
+        table.cell(dashboard, 0, 19, "PDH", text_color=color.white, text_size=size.tiny)
+        table.cell(dashboard, 1, 19, not na(pdh) ? str.tostring(pdh, format.mintick) : "---", text_color=color.red, text_size=size.tiny, tooltip="PREVIOUS DAY HIGH\n\n📚 Key resistance level\n📚 Elder: 'Yesterday's high/low matter'\n\nPrice near PDH:\n• Rejection = short setup\n• Break above = bullish")
+        table.cell(dashboard, 2, 19, "Resistance", text_color=color.gray, text_size=size.tiny)
+        
+        table.cell(dashboard, 0, 19, "PDL", text_color=color.white, text_size=size.tiny)
+        table.cell(dashboard, 1, 19, not na(pdl) ? str.tostring(pdl, format.mintick) : "---", text_color=color.green, text_size=size.tiny, tooltip="PREVIOUS DAY LOW\n\n📚 Key support level\n📚 Elder: 'Yesterday's high/low matter'\n\nPrice near PDL:\n• Bounce = long setup\n• Break below = bearish")
+        table.cell(dashboard, 2, 19, "Support", text_color=color.gray, text_size=size.tiny)
+        
+        // REMOVED ROWS 18-25: Today High/Low, Session, ATR, Gap, ADX, Market Assessment, Trend
+        // These can be seen on the chart itself - dashboard focuses only on TRADE EXECUTION
+        
+        // VOLUME (CRITICAL - shows if breakout is real or fake!)
+        // Show both single-bar and 3-bar average for transparency
+        volume3BarRatio = avgVolume > 0 ? volume3BarAvg / avgVolume : 0
+        volumeText = str.tostring(volumeRatio, "#.#") + "×"
+        volume3BarText = str.tostring(volume3BarRatio, "#.#") + "×"
+        volumeThresholdText = str.tostring(volumeMultiplier, "#.#") + "× req"
+        
+        // Show which method is confirming (HTF = Higher TimeFrame)
+        // Enhanced: Shows if HTF rising allows the trade
+        volumeConfirmMethod = higherTFVolumeConfirmed and currentTFVolumeConfirmed ? "BOTH✅" : 
+                             higherTFVolumeConfirmed ? "15-MIN✅" : 
+                             currentTFVolumeConfirmed and htfVolRatioCheck > minHTFThreshold ? "5-MIN✅" :
+                             currentTFVolumeConfirmed and htfVolRising ? "5-MIN✅📈" :
+                             currentTFVolumeConfirmed and not htfSafeToTrade ? "🚫 HTF LOW" : "⚠️"
+        
+        volumeStatusText = volumeSpike ? "SPIKE 🔴" : highVolume ? volumeConfirmMethod : lowVolume ? "⚠️ WAIT" : "AVG"
+        volumeStatusColor = volumeSpike ? color.red : highVolume ? color.lime : lowVolume ? color.orange : color.gray
+        volumeBgColor = highVolume ? color.new(color.green, 50) : lowVolume ? color.new(color.red, 50) : color.new(color.gray, 50)
+        
+        // Row 18: Either VOLUME or EXIT WARNING
+        if not isForceExit
+            htfVolRatio = higherTFAvgVolume > 0 ? higherTFVolume / higherTFAvgVolume : 0
+            ctfVolRatio = recentAvgVolume > 0 ? volume3BarAvg / recentAvgVolume : 0  // Use RECENT avg (hybrid)
+            timeLabel = currentTimeHHMM >= 930 and currentTimeHHMM < 1130 ? "Morning" : currentTimeHHMM >= 1130 and currentTimeHHMM < 1400 ? "Lunch" : currentTimeHHMM >= 1400 and currentTimeHHMM < 1500 ? "Afternoon" : "Power"
+            htfRisingText = htfVolRising ? "\n\n📈 HTF MOMENTUM: 15-min volume RISING!\n(Current: " + str.tostring(higherTFVolume, "#") + " > Previous: " + str.tostring(higherTFVolume[1], "#") + ")\n✅ Catching move early - institutions building" : ""
+            htfBlockingText = currentTFVolumeConfirmed and not htfSafeToTrade ? "\n\n🚫 BLOCKED: 5-min spike but 15-min dead!\n(15-min: " + str.tostring(htfVolRatio, "#.#") + "× < 0.5× AND not rising)\nWaiting for institutional confirmation..." : ""
+            volumeTooltip = "WEIGHTED HYBRID + MOMENTUM\n(Context + Time + Early Detection)\n\n📊 15-Min HTF: " + str.tostring(htfVolRatio, "#.#") + "× recent " + (higherTFVolumeConfirmed ? "✅" : htfVolRising ? "📈" : htfVolRatio < minHTFThreshold ? "🚫" : "⚠️") + "\n📊 5-Min 3-Bar: " + str.tostring(ctfVolRatio, "#.#") + "× recent " + (currentTFVolumeConfirmed ? "✅" : "⚠️") + "\n🎯 Required: " + str.tostring(volumeMultiplier, "#.#") + "× recent (" + timeLabel + ")\n\n🔒 ENHANCED SAFETY RULE:\n• If 15-min confirms → ✅ TRADE\n• If only 5-min confirms → Check 15-min:\n  → Option A: HTF > 0.5× → ✅ TRADE\n  → Option B: HTF RISING → ✅ TRADE (catch early!)\n  → Neither: 🚫 BLOCKED (no institutional interest)" + htfRisingText + htfBlockingText + "\n\nStatus: " + (highVolume ? "✅ CONFIRMED - " + volumeConfirmMethod : lowVolume ? "⚠️ LOW - Wait!" : "⚡ Building") + "\n\n🔧 HYBRID: Compares to RECENT 20-bar avg\n📈 MOMENTUM: Detects institutions building\n📚 Fisher: 'Catch the beginning of moves'\n📚 Raschke: 'Time of day matters'"
+            
+            table.cell(dashboard, 0, 19, "VOLUME", text_color=color.white, text_size=size.small, bgcolor=volumeBgColor,
+                       tooltip=volumeTooltip)
+            table.cell(dashboard, 1, 19, str.tostring(htfVolRatio, "#.#") + "× | " + str.tostring(ctfVolRatio, "#.#") + "×", text_color=color.yellow, text_size=size.tiny, bgcolor=volumeBgColor,
+                       tooltip="WEIGHTED HYBRID + MOMENTUM\n\n15-Min HTF: " + str.tostring(htfVolRatio, "#.#") + "× recent avg " + (htfVolRising ? "📈 RISING" : "") + "\n5-Min 3-Bar: " + str.tostring(ctfVolRatio, "#.#") + "× recent avg\n\n🔒 ENHANCED CONFIRMATION:\n✅ 15-min confirms → TRADE\n✅ 5-min confirms + HTF > 0.5× → TRADE\n✅ 5-min confirms + HTF RISING → TRADE (early entry!)\n❌ 5-min confirms + HTF dead → BLOCKED\n\nTime-Adjusted Thresholds:\n• Morning (9:30-11:30): 1.2× recent\n• Lunch (11:30-2:00): 0.8× recent (relaxed)\n• Afternoon (2:00-3:00): 1.0× recent\n• Power Hour (3:00-4:00): 1.3× recent\n\nCurrent: " + str.tostring(volumeMultiplier, "#.#") + "× (" + timeLabel + ")")
+            table.cell(dashboard, 2, 19, volumeStatusText, text_color=volumeStatusColor, text_size=size.normal, bgcolor=volumeBgColor,
+                       tooltip=volumeTooltip)
+        else
+            // Force Exit Warning (replaces VOLUME row when active)
+            table.cell(dashboard, 0, 19, "⚠️ EXIT ALL", text_color=color.white, bgcolor=color.new(color.red, 0), text_size=size.normal,
+                       tooltip="FORCE EXIT TIME\n\n⏰ 3:45 PM - Close all positions NOW!\n\n📚 No new entries after 3:45 PM\n\n❌ Avoid overnight risk in day trading")
+            table.cell(dashboard, 1, 19, "POSITIONS", text_color=color.white, bgcolor=color.new(color.red, 0), text_size=size.normal)
+            table.cell(dashboard, 2, 19, "NOW! ⚠️", text_color=color.white, bgcolor=color.new(color.red, 0), text_size=size.normal)
+
+// ================================================================================================
+// PART 10: SIGNAL LOGGING & REASONING
+// ================================================================================================
+
+// CLEAN SIGNAL LABELS - Simple and concise
+if buySignalNew
+    drawSignalLabel(true, buyScore, highVolume, lowVolume)
+
+if sellSignalNew
+    drawSignalLabel(false, sellScore, highVolume, lowVolume)
+
+// ORB breakout - Lines with labels like professional charts
+// ALWAYS draw lines when ORB completes (regardless of volume) so trader can see levels
+// LONG side lines
+if orbComplete and showTradeLines and na(activeEntryLineLong)
+    actualStop = math.min(orbRange, maxStopLossPoints)
+    adjustedStopLevel = entryLevelLong - actualStop
+    stopDollars = actualStop * contractMultiplier
+    targetDollars = (targetLevelLong - entryLevelLong) * contractMultiplier
+    rrRatioLong = actualStop > 0 ? (targetLevelLong - entryLevelLong) / actualStop : 0
+    
+    // Labels positioned ON the lines (no vertical offset)
+    entryText = "LONG ENTRY " + str.tostring(entryLevelLong, format.mintick)
+    stopText = "LONG STOP " + str.tostring(adjustedStopLevel, format.mintick)
+    targetText = "LONG TARGET " + str.tostring(targetLevelLong, format.mintick)
+    
+    // ENTRY LINE - Blue solid
+    activeEntryLineLong := line.new(bar_index, entryLevelLong, bar_index + 1, entryLevelLong, color=color.new(color.blue, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, entryLevelLong, entryText, style=label.style_label_left, color=color.new(color.blue, 0), textcolor=color.white, size=size.small)
+    
+    // STOP LINE - Red solid
+    activeStopLineLong := line.new(bar_index, adjustedStopLevel, bar_index + 1, adjustedStopLevel, color=color.new(color.red, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, adjustedStopLevel, stopText, style=label.style_label_left, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+    
+    // TARGET LINE - Lime solid
+    activeTargetLineLong := line.new(bar_index, targetLevelLong, bar_index + 1, targetLevelLong, color=color.new(color.lime, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, targetLevelLong, targetText, style=label.style_label_left, color=color.new(color.lime, 0), textcolor=color.black, size=size.small)
+
+// SHORT side lines
+if orbComplete and showTradeLines and na(activeEntryLineShort)
+    actualStop = math.min(orbRange, maxStopLossPoints)
+    adjustedStopLevel = entryLevelShort + actualStop
+    stopDollars = actualStop * contractMultiplier
+    targetDollars = (entryLevelShort - targetLevelShort) * contractMultiplier
+    rrRatioShort = actualStop > 0 ? (entryLevelShort - targetLevelShort) / actualStop : 0
+    
+    // Labels positioned ON the lines (no vertical offset)
+    entryText = "SHORT ENTRY " + str.tostring(entryLevelShort, format.mintick)
+    stopText = "SHORT STOP " + str.tostring(adjustedStopLevel, format.mintick)
+    targetText = "SHORT TARGET " + str.tostring(targetLevelShort, format.mintick)
+    
+    // ENTRY LINE - Orange solid
+    activeEntryLineShort := line.new(bar_index, entryLevelShort, bar_index + 1, entryLevelShort, color=color.new(color.orange, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, entryLevelShort, entryText, style=label.style_label_left, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+    
+    // STOP LINE - Red solid
+    activeStopLineShort := line.new(bar_index, adjustedStopLevel, bar_index + 1, adjustedStopLevel, color=color.new(color.red, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, adjustedStopLevel, stopText, style=label.style_label_left, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+    
+    // TARGET LINE - Fuchsia solid
+    activeTargetLineShort := line.new(bar_index, targetLevelShort, bar_index + 1, targetLevelShort, color=color.new(color.fuchsia, 0), width=3, style=line.style_solid, extend=extend.right)
+    label.new(bar_index, targetLevelShort, targetText, style=label.style_label_left, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small)
+
+// Rejected entry warnings (entry quality not good enough)
+if orbRejectedLong
+    rejectReason = not isRegularHours ? "Outside RTH" : not sniperBullish ? "Sniper Mode Wait" : not goodRRLong ? "R:R < " + str.tostring(minRiskReward, "#.#") : not stopNotTooWide ? "Stop > " + str.tostring(maxStopLossPoints, "#") + "pts" : not orbRangeReasonable ? "ORB range bad" : "Unknown"
+    label.new(bar_index, high, "❌ ENTRY REJECTED | " + rejectReason + " | Skip this trade!", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.small, tooltip="Entry quality validation failed - protect your capital")
+
+if orbRejectedShort
+    rejectReason = not isRegularHours ? "Outside RTH" : not sniperBearish ? "Sniper Mode Wait" : not goodRRShort ? "R:R < " + str.tostring(minRiskReward, "#.#") : not stopNotTooWide ? "Stop > " + str.tostring(maxStopLossPoints, "#") + "pts" : not orbRangeReasonable ? "ORB range bad" : "Unknown"
+    label.new(bar_index, low, "❌ ENTRY REJECTED | " + rejectReason + " | Skip this trade!", style=label.style_label_up, color=color.new(color.red, 0), textcolor=color.white, size=size.small, tooltip="Entry quality validation failed - protect your capital")
+
+// False breakout warnings
+if orbFalseBreakoutLong
+    label.new(bar_index, high, "⚠️ FAKE BREAKOUT | Low Volume | Don't Chase!", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+if orbFalseBreakoutShort
+    label.new(bar_index, low, "⚠️ FAKE BREAKDOWN | Low Volume | Don't Chase!", style=label.style_label_up, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+
+// ================================================================================================
+// PART 11: ALERTS (AUTOMATION)
+// ================================================================================================
+
+// Construct JSON payloads for webhooks
+triggerStrategyAlerts(buySignalNew, sellSignalNew, isForceExit, not isForceExit[1], syminfo.ticker, close, buyScore, sellScore, signalType)
+
