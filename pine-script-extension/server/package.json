@@ -5,7 +5,8 @@
   "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {
-    "compile": "tsc -b",
+    "copy-tests": "mkdir -p out/tests && cp src/tests/cases.json out/tests/cases.json",
+    "compile": "tsc -b && npm run copy-tests",
     "watch": "tsc -b -w"
   },
   "dependencies": {

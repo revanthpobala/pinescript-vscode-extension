@@ -40,7 +40,7 @@ git clone https://github.com/revanthpobala/pinescript-vscode-extension.git
 cd pinescript-vscode-extension/pine-script-extension
 
 # 2. Install dependencies (Top-level, Client, and Server)
-npm run postinstall
+npm install
 
 # 3. Build the Extension
 # This compiles TypeScript and bundles everything with esbuild
@@ -77,7 +77,14 @@ To update function signatures or return types in the linter:
 If you modify the grammar:
 ```bash
 cd tree-sitter-pinescript
-npx tree-sitter build --wasm
+# Ensure tree-sitter-cli is installed
+npm install -g tree-sitter-cli
+# Generate the grammar files
+tree-sitter generate
+# Build the WASM file
+tree-sitter build --wasm
+# Copy to server directory
+mkdir -p ../pine-script-extension/server/wasm/
 cp tree-sitter-pinescript.wasm ../pine-script-extension/server/wasm/
 ```
 
