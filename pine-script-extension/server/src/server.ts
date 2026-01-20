@@ -40,8 +40,9 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 let parser: Parser | null = null;
 let PineScriptLang: Language | null = null;
 
-// Keep track of analyzers per document to reuse symbol tables
+// Keep track of analyzers and trees per document
 const analyzers = new Map<string, Analyzer>();
+const treeCache = new Map<string, any>();
 
 async function initParser() {
     try {
@@ -119,14 +120,32 @@ documents.onDidChangeContent(change => {
 // Memory cleanup
 documents.onDidClose(e => {
     analyzers.delete(e.document.uri);
+    const cachedTree = treeCache.get(e.document.uri);
+    if (cachedTree) {
+        cachedTree.delete();
+        treeCache.set(e.document.uri, null);
+    }
+    treeCache.delete(e.document.uri);
 });
+
+function getCachedTree(uri: string, text: string): any {
+    if (!parser) return null;
+    // For now, to solve leaks definitively, we replace the tree on every call 
+    // unless we want to implement full incremental parsing.
+    const oldTree = treeCache.get(uri);
+    if (oldTree) oldTree.delete();
+
+    const newTree = parser.parse(text);
+    treeCache.set(uri, newTree);
+    return newTree;
+}
 
 connection.onHover((params) => {
     const doc = documents.get(params.textDocument.uri);
     if (!doc || !parser) return null;
 
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     if (!tree) return null;
     const root = tree.rootNode;
 
@@ -196,7 +215,7 @@ connection.onSignatureHelp((params) => {
     if (!doc || !parser) return null;
 
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     const analyzer = analyzers.get(params.textDocument.uri);
     if (!tree || !analyzer) return null;
 
@@ -208,7 +227,7 @@ connection.onRenameRequest((params) => {
     if (!doc || !parser) return null;
 
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     const analyzer = analyzers.get(params.textDocument.uri);
     if (!tree || !analyzer) return null;
 
@@ -269,42 +288,41 @@ connection.onCompletion((params) => {
     }
 
     // 2. Local Symbols
-    if (parser) {
-        try {
-            const tree = parser.parse(text);
-            const localSymbols = new Set<string>();
-            const traverse = (node: any) => {
-                if (node.type === 'variable_declaration' || node.type === 'assignment') {
-                    const nameNode = node.childForFieldName('name');
-                    if (nameNode) {
-                        if (nameNode.type === 'tuple_declaration') {
-                            for (const child of nameNode.namedChildren) {
-                                if (child.type === 'identifier') localSymbols.add(child.text);
-                            }
-                        } else if (nameNode.text) {
-                            localSymbols.add(nameNode.text);
+    try {
+        const tree = getCachedTree(params.textDocument.uri, text);
+        const localSymbols = new Set<string>();
+        const traverse = (node: any) => {
+            if (node.type === 'variable_declaration' || node.type === 'assignment') {
+                const nameNode = node.childForFieldName('name');
+                if (nameNode) {
+                    if (nameNode.type === 'tuple_declaration') {
+                        for (const child of nameNode.namedChildren) {
+                            if (child.type === 'identifier') localSymbols.add(child.text);
                         }
+                    } else if (nameNode.text) {
+                        localSymbols.add(nameNode.text);
                     }
                 }
-                for (const child of node.children) {
-                    traverse(child);
-                }
-            };
-            if (tree) {
-                traverse(tree.rootNode);
             }
+            const count = node.childCount;
+            for (let j = 0; j < count; j++) {
+                traverse(node.child(j));
+            }
+        };
+        if (tree) {
+            traverse(tree.rootNode);
+        }
 
-            localSymbols.forEach(sym => {
-                if (analyzer?.userFunctionTable.has(sym)) return; // Skip if it's already a function
-                items.push({
-                    label: sym,
-                    kind: CompletionItemKind.Variable,
-                    detail: 'Local Variable',
-                    sortText: '1_' + sym
-                });
+        localSymbols.forEach(sym => {
+            if (analyzer?.userFunctionTable.has(sym)) return; // Skip if it's already a function
+            items.push({
+                label: sym,
+                kind: CompletionItemKind.Variable,
+                detail: 'Local Variable',
+                sortText: '1_' + sym
             });
-        } catch (e) { }
-    }
+        });
+    } catch (e) { }
 
     const namespaces = new Set<string>();
     definitions.functions.forEach((f: any) => {
@@ -349,7 +367,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     try {
         const text = textDocument.getText();
-        const tree = parser.parse(text);
+        const tree = getCachedTree(textDocument.uri, text);
 
         if (tree) {
             let analyzer = analyzers.get(textDocument.uri);
@@ -371,7 +389,7 @@ connection.languages.semanticTokens.on((params) => {
 
     const builder = new SemanticTokensBuilder();
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     const analyzer = analyzers.get(params.textDocument.uri);
 
     if (!tree) return { data: [] };
@@ -418,8 +436,10 @@ connection.languages.semanticTokens.on((params) => {
         }
 
         // Push children in reverse for correct DFS order
-        for (let i = node.children.length - 1; i >= 0; i--) {
-            stack.push(node.children[i]);
+        const count = node.childCount;
+        for (let i = count - 1; i >= 0; i--) {
+            const child = node.child(i);
+            if (child) stack.push(child);
         }
     }
 
@@ -431,7 +451,7 @@ connection.onDocumentSymbol((params) => {
     if (!doc || !parser) return [];
 
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     const symbols: DocumentSymbol[] = [];
 
     if (!tree) return [];
@@ -493,8 +513,10 @@ connection.onDocumentSymbol((params) => {
             }
         }
 
-        for (let i = node.children.length - 1; i >= 0; i--) {
-            stack.push(node.children[i]);
+        const count = node.childCount;
+        for (let i = count - 1; i >= 0; i--) {
+            const child = node.child(i);
+            if (child) stack.push(child);
         }
     }
 
@@ -506,7 +528,7 @@ connection.onFoldingRanges((params) => {
     if (!doc || !parser) return [];
 
     const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getCachedTree(params.textDocument.uri, text);
     const ranges: FoldingRange[] = [];
 
     if (!tree) return [];
@@ -523,8 +545,10 @@ connection.onFoldingRanges((params) => {
                 });
             }
         }
-        for (let i = node.children.length - 1; i >= 0; i--) {
-            stack.push(node.children[i]);
+        const count = node.childCount;
+        for (let i = count - 1; i >= 0; i--) {
+            const child = node.child(i);
+            if (child) stack.push(child);
         }
     }
 

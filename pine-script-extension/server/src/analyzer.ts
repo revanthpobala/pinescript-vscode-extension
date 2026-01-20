@@ -8,9 +8,12 @@ export interface SyntaxNode {
     endPosition: { row: number; column: number };
     startIndex: number;
     endIndex: number;
+    childCount: number;
+    namedChildCount: number;
     children: SyntaxNode[];
     parent: SyntaxNode | null;
     child(index: number): SyntaxNode | null;
+    namedChild(index: number): SyntaxNode | null;
     childForFieldName(name: string): SyntaxNode | null;
     namedChildren: SyntaxNode[];
 }
@@ -294,7 +297,75 @@ export class Analyzer {
     }
 
     // New validation helper
+    private extractParameters(paramsNode: SyntaxNode | null | undefined): any[] {
+        const params: any[] = [];
+        if (!paramsNode) return params;
+
+        const pCount = paramsNode.childCount;
+        for (let i = 0; i < pCount; i++) {
+            const p = paramsNode.child(i);
+            if (!p) continue;
+            if (p.type === 'parameter' || p.type === 'identifier' || p.type === 'simple_parameter') {
+                let pNameNode = p.childForFieldName('name');
+                if (!pNameNode) {
+                    for (let j = p.childCount - 1; j >= 0; j--) {
+                        const c = p.child(j);
+                        if (c?.type === 'identifier') { pNameNode = c; break; }
+                    }
+                }
+                if (!pNameNode && p.type === 'identifier') pNameNode = p;
+
+                if (pNameNode) {
+                    const pTypeNode = p.childForFieldName('type');
+                    const isOptional = p.text.includes('=') || p.text.includes(':=');
+                    params.push({
+                        name: pNameNode.text,
+                        type: pTypeNode?.text || 'any',
+                        required: !isOptional
+                    });
+                }
+            } else if (p.type === 'variadic_parameter') {
+                params.push({ name: p.text, type: 'any', required: false });
+            }
+        }
+        return params;
+    }
+
+    private extractParametersFromCall(callNode: SyntaxNode): any[] {
+        const params: any[] = [];
+        const argListNode = callNode.childForFieldName('arguments') || callNode.namedChildren.find(c => c.type === 'argument_list');
+        if (argListNode) {
+            for (const arg of argListNode.namedChildren) {
+                const findRightmostId = (n: SyntaxNode): string | null => {
+                    if (n.type === 'identifier') return n.text;
+                    if (n.namedChildren.length > 0) {
+                        return findRightmostId(n.namedChildren[n.namedChildren.length - 1]);
+                    }
+                    return null;
+                };
+                const pName = findRightmostId(arg);
+                if (pName) {
+                    params.push({ name: pName, type: 'any', required: true });
+                }
+            }
+        }
+        return params;
+    }
+
     private isReadOnly(node: SyntaxNode): boolean {
+        // ALLOW SHADOWING: If this identifier is part of any definition or assignment to a new local
+        const parent = node.parent;
+        if (parent) {
+            // If it's a declaration, it's shadowing, not assigning to global
+            if (parent.type === 'variable_declaration' || parent.type === 'simple_declaration' || parent.type === 'parameter') {
+                return false;
+            }
+            // If it's a named argument in a call: color=red
+            if (parent.type === 'argument' || parent.type === 'keyword_argument') {
+                return false;
+            }
+        }
+
         // 1. Built-in Methods ending in .new (constructors)
         if (node.text.endsWith('.new') && !node.text.startsWith('array.') && !node.text.startsWith('matrix.') && !node.text.startsWith('map.')) {
             // Arrays/matrices have .new(), but types have Type.new()
@@ -334,110 +405,45 @@ export class Analyzer {
         this.initializeBuiltIns(); // Re-populate standard library symbols
         this.sourceCode = rootNode.text; // Store source for text-based checks
 
+        // Pass 0: Greedy Text Scan for Function Definitions (Regex fallback)
+        // Helps catch definitions that Tree-sitter completely fractures into ERROR/expression_statement nodes
+        const functionDefRegex = /^([a-zA-Z_]\w*)\s*\([\s\S]*?\)\s*=>/gm;
+        let match;
+        while ((match = functionDefRegex.exec(this.sourceCode)) !== null) {
+            const funcName = match[1];
+            if (!this.userFunctionTable.has(funcName)) {
+                this.userFunctionTable.set(funcName, {
+                    name: funcName,
+                    description: 'User function (recovered via text scan)',
+                    returnType: 'any',
+                    params: []
+                });
+            }
+        }
+
         // Pass 1: Collect User Symbols (Functions and Variables)
         const stack: SyntaxNode[] = [rootNode];
         while (stack.length > 0) {
             const node = stack.pop()!;
 
-            // 0. Manual Children Scan for Complex Patterns (e.g. broken function defs)
-            if (node.type === 'source_file' || node.type === 'block') {
-                for (let i = 0; i < node.children.length; i++) {
-                    const child = node.children[i];
-                    if (child.type === 'expression_statement') {
-                        const grandChild = child.child(0);
-                        if (grandChild?.type === 'function_call') {
-                            const next = node.children[i + 1];
-                            if (next && next.type === 'ERROR' && next.text === '=>') {
-                                const funcNameNode = grandChild.childForFieldName('function') || grandChild.child(0);
-                                if (funcNameNode) {
-                                    this.userFunctionTable.set(funcNameNode.text, {
-                                        name: funcNameNode.text,
-                                        description: 'User function (recovered from complex syntax)',
-                                        returnType: 'any',
-                                        params: [{ name: '...args', type: 'any', required: false }]
-                                    });
-                                }
-                            }
-                        }
-                    } else if (child.type === 'function_definition') {
-                        // Fallback for function defs followed by weird tokens
-                        // (Already handled by strict parser mostly, but can add if needed)
-                    }
-                }
-            }
-
             // 1. Collect Function and Method Definitions
             if (node.type === 'function_definition') {
-                const nameNode = node.childForFieldName('name');
+                const nameNode = node.childForFieldName('name') || node.childForFieldName('function') || node.child(0);
                 if (nameNode?.text) {
-                    const params: any[] = [];
-                    const paramsNode = node.childForFieldName('parameters');
-                    if (paramsNode) {
-                        for (const p of paramsNode.namedChildren) {
-                            if (p.type === 'parameter') {
-                                const pNameNode = p.namedChildren.find(c => c.type === 'identifier');
-                                const pTypeNode = p.namedChildren.find(c => c.type === 'type');
-                                params.push({
-                                    name: pNameNode?.text || 'any',
-                                    type: pTypeNode?.text || 'any',
-                                    required: true
-                                });
-                            }
-                        }
-                    }
                     this.userFunctionTable.set(nameNode.text, {
                         name: nameNode.text,
                         description: 'User Defined Function',
                         returnType: 'any',
-                        params: params
+                        params: this.extractParameters(node.childForFieldName('parameters'))
                     });
                 }
             }
 
-            // 1a-Recovery. Collect Function Definitions parsed as Expression Statements (Generics failure)
-            if (node.type === 'expression_statement') {
-                const callNode = node.namedChildren[0];
-                if (callNode && callNode.type === 'function_call') {
-                    const errorNode = node.children.find(c => c.type === 'ERROR' && c.text === '=>');
-                    if (errorNode) {
-                        const nameNode = callNode.childForFieldName('function');
-                        if (nameNode && nameNode.text) {
-                            const params: string[] = [];
-                            const argList = callNode.childForFieldName('arguments');
-                            if (argList) {
-                                for (const arg of argList.namedChildren) {
-                                    const findRightmostId = (n: SyntaxNode): string | null => {
-                                        if (n.type === 'identifier') return n.text;
-                                        if (n.namedChildren.length > 0) {
-                                            return findRightmostId(n.namedChildren[n.namedChildren.length - 1]);
-                                        }
-                                        return null;
-                                    };
-                                    const pName = findRightmostId(arg);
-                                    if (pName) params.push(pName);
-                                }
-                            }
-                            this.userFunctionTable.set(nameNode.text, {
-                                name: nameNode.text,
-                                description: 'User Defined Function (Recovered)',
-                                returnType: 'any',
-                                params: params.map(p => ({
-                                    name: p,
-                                    type: 'any',
-                                    required: true
-                                }))
-                            });
-                        }
-                    }
-                }
-            }
-
-            // 1b. Collect Type Definitions (UDTs)
+            // 2. Collect Type Definitions (UDTs)
             if (node.type === 'type_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode?.text) {
                     this.define(nameNode.text, { name: 'type', qualifier: Qualifier.Simple }, nameNode);
-                    // Also allow Name.new()
                     this.userFunctionTable.set(`${nameNode.text}.new`, {
                         name: `${nameNode.text}.new`,
                         description: 'UDT Constructor',
@@ -447,7 +453,7 @@ export class Analyzer {
                 }
             }
 
-            // 1c. Collect Import Aliases
+            // 3. Collect Import Aliases
             if (node.type === 'import_statement') {
                 const aliasNode = node.childForFieldName('alias');
                 if (aliasNode?.text) {
@@ -463,8 +469,7 @@ export class Analyzer {
                 }
             }
 
-            // 2. Global variable declarations (only if at depth 1 or similar)
-            // For now, let's collect everything that looks like a global declaration
+            // 4. Global variable declarations
             const isTopLevel = node.parent?.type === 'source_file';
             if (isTopLevel && (node.type === 'variable_declaration' || node.type === 'assignment' || node.type === 'simple_declaration')) {
                 const nameNode = node.childForFieldName('name') || node.child(0);
@@ -483,58 +488,54 @@ export class Analyzer {
                     };
                     collectFromTarget(nameNode);
                 }
-            }
 
-            // 3. Collect from method/parameter lists even if parent is ERROR
-            if (node.type === 'parameter') {
-                const nameNode = node.namedChildren.find(c => c.type === 'identifier');
-                if (nameNode) {
-                    this.define(nameNode.text, { name: 'any', qualifier: Qualifier.Simple }, nameNode);
+                // Detect if it's an anonymous function assignment: foo = () => ...
+                const rhsNode = node.childForFieldName('value') || node.child(node.childCount - 1);
+                if (rhsNode && rhsNode.type === 'anonymous_function' && nameNode) {
+                    this.userFunctionTable.set(nameNode.text, {
+                        name: nameNode.text,
+                        description: 'User function (assignment)',
+                        returnType: 'any',
+                        params: this.extractParameters(rhsNode.childForFieldName('parameters'))
+                    });
                 }
             }
 
-            // 4. GREEDY: Collect potential definitions inside ERROR nodes
-            if (node.type === 'ERROR') {
-                const collectIdentifiers = (n: SyntaxNode) => {
-                    if (n.type === 'identifier') {
-                        // Safe default: assume any identifier in an error zone is a valid symbol/parameter
-                        this.define(n.text, { name: 'any', qualifier: Qualifier.Simple }, n);
-                    }
-                    for (const child of n.children) {
-                        collectIdentifiers(child);
-                    }
-                };
-                collectIdentifiers(node);
-
-                // Heuristic for functions defined inside errors
-                for (let i = 0; i < node.children.length; i++) {
-                    const child = node.children[i];
-                    // console.log(`DEBUG: Pass 1 Node [${i}]: ${child.type}`);
-
-                    if (child.type === 'function_definition') {
-                        const next = node.children[i + 1];
-                        if (next && (next.text === '=>' || (next.type === 'type' && node.children[i + 2]?.text === '=>'))) {
-                            this.userFunctionTable.set(child.text, {
-                                name: child.text,
+            // 5. Recovery for broken function definitions (parsed as expression_statement or identifier + ERROR =>)
+            if (node.type === 'expression_statement' || node.type === 'ERROR' || node.type === 'identifier' || node.type === 'function_call') {
+                const text = node.text;
+                // Pattern: funcName(params) =>
+                if (text.includes('=>')) {
+                    const match = text.match(/([a-zA-Z_]\w*)\s*\((.*)\)\s*=>/);
+                    if (match) {
+                        const funcName = match[1];
+                        if (!this.userFunctionTable.has(funcName)) {
+                            this.userFunctionTable.set(funcName, {
+                                name: funcName,
                                 description: 'User function (recovered)',
                                 returnType: 'any',
-                                params: []
+                                params: [] // Hard to parse from text match reliably
                             });
                         }
-                    } else if (child.type === 'expression_statement') {
-                        // RECOVERY: Check for "function_call" followed by "=>" (ERROR node)
-                        // This happens when parser fails on complex parameters like matrix<box>
-                        const grandChild = child.child(0);
-                        if (grandChild?.type === 'function_call') {
-                            const next = node.children[i + 1];
+                    }
+                }
+
+                // Check for sibling recovery (common when parameters are broken)
+                if (node.type === 'expression_statement' || node.type === 'function_call' || node.type === 'identifier') {
+                    const callNode = node.type === 'expression_statement' ? node.child(0) : node;
+                    if (callNode && (callNode.type === 'function_call' || callNode.type === 'identifier')) {
+                        const parent = node.parent;
+                        if (parent) {
+                            const idx = parent.children.indexOf(node);
+                            const next = idx !== -1 ? parent.children[idx + 1] : null;
                             if (next && next.type === 'ERROR' && next.text === '=>') {
-                                const funcNameNode = grandChild.childForFieldName('function') || grandChild.child(0);
-                                if (funcNameNode) {
-                                    this.userFunctionTable.set(funcNameNode.text, {
-                                        name: funcNameNode.text,
+                                const nameNode = callNode.type === 'identifier' ? callNode : callNode.childForFieldName('function') || callNode.child(0);
+                                if (nameNode) {
+                                    this.userFunctionTable.set(nameNode.text, {
+                                        name: nameNode.text,
                                         description: 'User function (recovered from complex syntax)',
                                         returnType: 'any',
-                                        params: [] // Params are too complex to parse here, but at least we know it's a function
+                                        params: callNode.type === 'function_call' ? this.extractParametersFromCall(callNode) : []
                                     });
                                 }
                             }
@@ -543,8 +544,24 @@ export class Analyzer {
                 }
             }
 
-            for (let i = node.children.length - 1; i >= 0; i--) {
-                stack.push(node.children[i]);
+            // Greedily collect identifiers from ERROR nodes as potential symbols
+            if (node.type === 'ERROR') {
+                const collectIdentifiers = (n: SyntaxNode) => {
+                    if (n.type === 'identifier') {
+                        if (!this.getSymbol(n.text)) {
+                            this.define(n.text, { name: 'any', qualifier: Qualifier.Simple }, n);
+                        }
+                    }
+                    for (const child of n.children) collectIdentifiers(child);
+                };
+                collectIdentifiers(node);
+            }
+
+            // Push children
+            const childrenCount = node.childCount;
+            for (let i = childrenCount - 1; i >= 0; i--) {
+                const child = node.child(i);
+                if (child) stack.push(child);
             }
         }
 
@@ -621,8 +638,10 @@ export class Analyzer {
         }
 
         // --- VISIT CHILDREN ---
-        for (const child of node.children) {
-            this.visit(child, diagnostics);
+        const count = node.childCount;
+        for (let i = 0; i < count; i++) {
+            const child = node.child(i);
+            if (child) this.visit(child, diagnostics);
         }
 
         if (pushed) {
@@ -742,12 +761,19 @@ export class Analyzer {
                     const funcName = funcNameNode.text;
                     const def = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
                     if (def) {
-                        if (funcName === 'array.from') {
+                        if (funcName === 'array.from' || funcName === 'array.new') {
                             const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
                             const firstArg = argListNode?.namedChildren[0];
+
+                            // Check for generic syntax array.new<type>()
+                            if (node.text.includes('<') && node.text.includes('>')) {
+                                const match = node.text.match(/<([^>]+)>/);
+                                if (match) return `array<${match[1]}>`;
+                            }
+
                             if (firstArg) {
                                 let elemType = this.getType(firstArg);
-                                if (elemType.includes('|')) elemType = elemType.split('|')[0]; // pick first for simplicity
+                                if (elemType.includes('|')) elemType = elemType.split('|')[0];
                                 if (elemType === 'any') return 'any[]';
                                 return `array<${elemType}>`;
                             }
@@ -756,20 +782,25 @@ export class Analyzer {
 
                         let returnType = Array.isArray(def.returnType) ? def.returnType.join('|') : def.returnType;
 
-                        // Descriptive return types like "A result determined by `expression`." should be 'any'
-                        if (returnType.length > 50 || returnType.includes('determined by')) {
-                            returnType = 'any';
+                        // FIX: Better handling for descriptive "types" in definitions.json
+                        if (returnType.length > 25 || returnType.includes(' ') || returnType.includes('`') || returnType.includes('.')) {
+                            // If it's a long string with spaces or special chars, it's likely a description
+                            // Unless it's a known generic/documented special case
+                            if (!returnType.includes('array<') && !returnType.includes('matrix<') && !returnType.includes('map<')) {
+                                returnType = 'any';
+                            }
                         }
 
-                        // Handle generic array return types
-                        if (returnType === "The array element\\`s value.") {
+                        // Handle generic array element return types
+                        if (returnType.includes('element') || returnType.includes('removed') || returnType.includes('popped')) {
                             const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
                             const firstArg = argListNode?.namedChildren[0];
                             if (firstArg) {
-                                const containerType = this.getType(firstArg);
+                                let containerType = this.getType(firstArg);
                                 if (containerType.startsWith('array<')) {
                                     return containerType.substring(6, containerType.length - 1);
-                                } else if (containerType.endsWith('[]')) {
+                                }
+                                if (containerType.endsWith('[]')) {
                                     return containerType.substring(0, containerType.length - 2);
                                 }
                             }
@@ -1031,12 +1062,12 @@ export class Analyzer {
         // We only check compatibility if it already exists in the current scope.
         if ((node.type === 'variable_declaration' || node.type === 'simple_declaration')) {
             if (!localSym) {
-                const rhsNode = node.childForFieldName('value') || node.child(node.children.length - 1);
+                const rhsNode = node.childForFieldName('value') || node.child(node.childCount - 1);
                 if (rhsNode) {
                     const rhsType = this.getType(rhsNode);
                     const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
                     const declaredType = explicitTypeNode?.text || rhsType;
-                    this.define(name, { name: declaredType, qualifier }, nameNode);
+                    this.define(name, { name: declaredType, qualifier: Qualifier.Simple }, nameNode);
                 }
                 return;
             } else if (!localSym.range) {
@@ -1456,8 +1487,10 @@ export class Analyzer {
             // Re-implementing a safer active parameter detection based on commas
             // The tree-sitter node for argument_list contains commas as anonymous nodes
             let commaCount = 0;
-            for (const child of argListNode.children) {
-                if (child.type === ',') {
+            const count = argListNode.childCount;
+            for (let i = 0; i < count; i++) {
+                const child = argListNode.child(i);
+                if (child && child.type === ',') {
                     if (position.line > child.endPosition.row || (position.line === child.endPosition.row && position.character > child.endPosition.column)) {
                         commaCount++;
                     }
