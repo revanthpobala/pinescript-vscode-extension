@@ -1,13 +1,17 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { Parser, Language } from 'web-tree-sitter';
-import { Analyzer } from '../analyzer';
+import { Analyzer } from '../src/analyzer';
 
 // @ts-ignore
-import definitions from '../data/definitions.json';
+import definitions from '../src/data/definitions.json';
+
+declare global {
+    interface EmscriptenModule { }
+}
 
 async function runTests() {
-    console.log('--- Starting Pine Script Analyzer Tests ---');
+    const analyzer = new Analyzer(definitions);
 
     await Parser.init();
     const parser = new Parser();
@@ -15,7 +19,6 @@ async function runTests() {
     const lang = await Language.load(wasmPath);
     parser.setLanguage(lang);
 
-    const analyzer = new Analyzer(definitions);
     const testCases = JSON.parse(fs.readFileSync(path.join(__dirname, 'cases.json'), 'utf8'));
 
     let passed = 0;
@@ -74,9 +77,15 @@ function adaptNode(node: any, parent: any = null): any {
         endPosition: node.endPosition,
         startIndex: node.startIndex,
         endIndex: node.endIndex,
+        childCount: node.childCount,
+        namedChildCount: node.namedChildCount,
         parent: parent,
         child: (i: number) => {
             const c = node.child(i);
+            return c ? adaptNode(c, adapted) : null;
+        },
+        namedChild: (i: number) => {
+            const c = node.namedChild(i);
             return c ? adaptNode(c, adapted) : null;
         },
         childForFieldName: (name: string) => {

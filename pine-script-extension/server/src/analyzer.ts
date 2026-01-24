@@ -87,7 +87,7 @@ export class Analyzer {
         'line', 'table', 'polyline', 'linefill', 'hline', 'plot', 'display',
         'order', 'scale', 'adjustment', 'backadjustment', 'currency', 'font',
         'extend', 'location', 'position', 'shape', 'size', 'text', 'xloc', 'yloc',
-        'splits', 'barmerge', 'settlement_as_close'
+        'splits', 'barmerge', 'settlement_as_close', 'log'
     ]);
 
     // Fundamental types, constants, and dual-use terms that are BOTH functions AND variables.
@@ -151,7 +151,6 @@ export class Analyzer {
         // Barmerge constants
         'barmerge.gaps_off', 'barmerge.gaps_on', 'barmerge.lookahead_off', 'barmerge.lookahead_on',
         // Hline style constants
-        'hline.style_solid', 'hline.style_dashed', 'hline.style_dotted',
         // Plot style constants
         'plot.style_line', 'plot.style_linebr', 'plot.style_stepline', 'plot.style_stepline_diamond',
         'plot.style_steplinebr', 'plot.style_area', 'plot.style_areabr', 'plot.style_columns',
@@ -176,6 +175,12 @@ export class Analyzer {
         'font.family_default', 'font.family_monospace',
         // Scale constants
         'scale.left', 'scale.right', 'scale.none'
+    ]);
+
+    // Functions with broken or overly strict parameter metadata in definitions.json.
+    // We relax validation for these to prevent false positive "Missing required arguments" errors.
+    private static readonly RELAXED_PARAM_FUNCTIONS = new Set([
+        'nz', 'fill', 'plotchar', 'plotshape', 'log.info', 'log.warning', 'log.error'
     ]);
 
     constructor(definitionsJson: any) {
@@ -405,8 +410,8 @@ export class Analyzer {
         this.initializeBuiltIns(); // Re-populate standard library symbols
         this.sourceCode = rootNode.text; // Store source for text-based checks
 
-        // Pass 0: Greedy Text Scan for Function Definitions (Regex fallback)
-        // Helps catch definitions that Tree-sitter completely fractures into ERROR/expression_statement nodes
+        // Pass 0: Greedy Text Scan for Function and Variable Definitions
+        // Catch definitions that Tree-sitter fractures (e.g. matrix<int> m = ...)
         const functionDefRegex = /^([a-zA-Z_]\w*)\s*\([\s\S]*?\)\s*=>/gm;
         let match;
         while ((match = functionDefRegex.exec(this.sourceCode)) !== null) {
@@ -414,9 +419,23 @@ export class Analyzer {
             if (!this.userFunctionTable.has(funcName)) {
                 this.userFunctionTable.set(funcName, {
                     name: funcName,
-                    description: 'User function (recovered via text scan)',
+                    description: 'User function (recovered)',
                     returnType: 'any',
                     params: []
+                });
+            }
+        }
+
+        // Variable recovery (including generic types like matrix<int> or arrays float[])
+        const varDefRegex = /^(?:var\s+|varip\s+)?(?:([a-zA-Z_]\w*(?:<[^>]+>|\[\])?|bool|int|float|string|color|line|label|box|table|matrix|array))\s+([a-zA-Z_]\w*)\s*=/gm;
+        while ((match = varDefRegex.exec(this.sourceCode)) !== null) {
+            const type = match[1].replace(/\s/g, '');
+            const name = match[2];
+            // Only define if not already present in the global scope
+            if (!this.scopeStack[0].has(name)) {
+                this.define(name, {
+                    name: type === 'var' || type === 'varip' ? 'any' : type,
+                    qualifier: Qualifier.Simple
                 });
             }
         }
@@ -443,11 +462,12 @@ export class Analyzer {
             if (node.type === 'type_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode?.text) {
-                    this.define(nameNode.text, { name: 'type', qualifier: Qualifier.Simple }, nameNode);
-                    this.userFunctionTable.set(`${nameNode.text}.new`, {
-                        name: `${nameNode.text}.new`,
+                    const typeName = nameNode.text;
+                    this.define(typeName, { name: 'type', qualifier: Qualifier.Simple }, nameNode);
+                    this.userFunctionTable.set(`${typeName}.new`, {
+                        name: `${typeName}.new`,
                         description: 'UDT Constructor',
-                        returnType: 'any',
+                        returnType: typeName,
                         params: []
                     });
                 }
@@ -478,6 +498,9 @@ export class Analyzer {
 
                 if (nameNode) {
                     const collectFromTarget = (target: SyntaxNode) => {
+                        // Skip if it's a parameter (it will be handled in local scope)
+                        if (target.parent?.type === 'parameter') return;
+
                         if (target.type === 'identifier') {
                             this.define(target.text, { name: typeName, qualifier: Qualifier.Simple }, target);
                         } else if (target.type === 'tuple_declaration' || target.type === 'tuple_expression') {
@@ -700,16 +723,22 @@ export class Analyzer {
     }
 
     private isInsideError(node: SyntaxNode): boolean {
-        let n: SyntaxNode | null = node.parent;
-        while (n) {
-            if (n.type === 'ERROR') return true;
-            n = n.parent;
-        }
-        // Siblings: If a sibling is an error, the statement is broken
-        if (node.parent) {
-            for (const child of node.parent.children) {
-                if (child.type === 'ERROR') return true;
+        let curr: SyntaxNode | null = node;
+        while (curr) {
+            if (curr.type === 'ERROR') return true;
+            // Catch cases where the parser fractures code into a series of brothers with errors
+            if (curr.parent) {
+                const brothers = curr.parent.children;
+                for (const b of brothers) {
+                    if (b.type === 'ERROR') return true;
+                    // Robustness: if a brother is a string literal containing a single quote, it might be a fracture
+                    if (b.type === 'string' && b.text.includes("'")) {
+                        // If it's a very short or broken looking string, it's often parser noise
+                        if (b.text.length < 5 || b.text.startsWith("'") && !b.text.endsWith("'")) return true;
+                    }
+                }
             }
+            curr = curr.parent;
         }
         return false;
     }
@@ -756,56 +785,85 @@ export class Analyzer {
                 return this.getType(node.namedChildren[0]);
 
             case 'function_call':
-                const funcNameNode = node.childForFieldName('name') || node.child(0);
-                if (funcNameNode) {
-                    const funcName = funcNameNode.text;
+                const funcPart = node.childForFieldName('function') || node.child(0);
+                if (funcPart) {
+                    // Chained/Method call support: arr.get(...).something()
+                    if (funcPart.type === 'member_access') {
+                        const member = funcPart.childForFieldName('member');
+                        const object = funcPart.childForFieldName('object');
+                        if (member && object) {
+                            const memberName = member.text;
+                            const objectType = this.getType(object);
+
+                            // If object is an array/matrix, check collection methods
+                            const isArray = objectType.startsWith('array<') || objectType.endsWith('[]');
+                            const isMatrix = objectType.startsWith('matrix<');
+
+                            if (isArray || isMatrix) {
+                                const elemType = objectType.includes('<')
+                                    ? objectType.substring(objectType.indexOf('<') + 1, objectType.lastIndexOf('>'))
+                                    : objectType.substring(0, objectType.length - 2);
+
+                                if (['get', 'pop', 'shift', 'remove', 'row', 'col'].includes(memberName)) return elemType;
+                                if (['size', 'indexof', 'last_indexof', 'rows', 'columns'].includes(memberName)) return 'int';
+                                if (['includes'].includes(memberName)) return 'bool';
+                                if (memberName === 'copy') return objectType;
+                            }
+                            // Generic method fallback
+                            const def = this.definitions.get(memberName) || this.definitions.get(`${objectType.split('<')[0]}.${memberName}`);
+                            if (def) return Array.isArray(def.returnType) ? def.returnType.join('|') : def.returnType;
+                        }
+                    }
+
+                    const funcName = funcPart.text;
                     const def = this.definitions.get(funcName) || this.userFunctionTable.get(funcName);
                     if (def) {
-                        if (funcName === 'array.from' || funcName === 'array.new') {
+                        if (funcName.startsWith('array.new') || funcName === 'array.from' || funcName.startsWith('matrix.new')) {
                             const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
                             const firstArg = argListNode?.namedChildren[0];
 
-                            // Check for generic syntax array.new<type>()
+                            // Check for generic syntax matrix.new<type>()
                             if (node.text.includes('<') && node.text.includes('>')) {
                                 const match = node.text.match(/<([^>]+)>/);
-                                if (match) return `array<${match[1]}>`;
+                                if (match) return funcName.startsWith('matrix') ? `matrix<${match[1]}>` : `array<${match[1]}>`;
+                            }
+
+                            // Handle explicit type methods matrix.new_int(...)
+                            if (funcName.includes('_')) {
+                                const typePart = funcName.split('_')[1];
+                                return funcName.startsWith('matrix') ? `matrix<${typePart}>` : `array<${typePart}>`;
                             }
 
                             if (firstArg) {
                                 let elemType = this.getType(firstArg);
                                 if (elemType.includes('|')) elemType = elemType.split('|')[0];
-                                if (elemType === 'any') return 'any[]';
-                                return `array<${elemType}>`;
+                                if (elemType === 'any') return funcName.startsWith('matrix') ? 'matrix<any>' : 'array<any>';
+                                return funcName.startsWith('matrix') ? `matrix<${elemType}>` : `array<${elemType}>`;
                             }
-                            return 'any[]';
+                            return funcName.startsWith('matrix') ? 'matrix<any>' : 'array<any>';
                         }
 
                         let returnType = Array.isArray(def.returnType) ? def.returnType.join('|') : def.returnType;
 
-                        // FIX: Better handling for descriptive "types" in definitions.json
-                        if (returnType.length > 25 || returnType.includes(' ') || returnType.includes('`') || returnType.includes('.')) {
-                            // If it's a long string with spaces or special chars, it's likely a description
-                            // Unless it's a known generic/documented special case
-                            if (!returnType.includes('array<') && !returnType.includes('matrix<') && !returnType.includes('map<')) {
-                                returnType = 'any';
+                        // Descriptive return type extraction (e.g. "The array element's value")
+                        if (returnType.includes('element') || returnType.includes('removed') || returnType.includes('popped') || returnType.includes('shifted')) {
+                            const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
+                            if (argListNode && argListNode.namedChildCount > 0) {
+                                const firstArg = argListNode.namedChild(0);
+                                if (firstArg) {
+                                    let containerType = this.getType(firstArg);
+                                    if (containerType.startsWith('array<')) return containerType.substring(6, containerType.length - 1);
+                                    if (containerType.startsWith('matrix<')) return containerType.substring(7, containerType.length - 1);
+                                    if (containerType.endsWith('[]')) return containerType.substring(0, containerType.length - 2);
+                                }
                             }
                         }
 
-                        // Handle generic array element return types
-                        if (returnType.includes('element') || returnType.includes('removed') || returnType.includes('popped')) {
-                            const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
-                            const firstArg = argListNode?.namedChildren[0];
-                            if (firstArg) {
-                                let containerType = this.getType(firstArg);
-                                if (containerType.startsWith('array<')) {
-                                    return containerType.substring(6, containerType.length - 1);
-                                }
-                                if (containerType.endsWith('[]')) {
-                                    return containerType.substring(0, containerType.length - 2);
-                                }
-                            }
-                            return 'any';
+                        // Noise filter for other descriptive types
+                        if (returnType.length > 30 || returnType.includes(' ') || returnType.includes('`')) {
+                            if (!returnType.includes('<')) returnType = 'any';
                         }
+
                         return returnType;
                     }
                     if (Analyzer.VOID_FUNCTIONS.has(funcName)) return 'void';
@@ -968,14 +1026,12 @@ export class Analyzer {
     private handleWhileStatement(node: SyntaxNode, diagnostics: Diagnostic[]) {
         const condition = node.childForFieldName('condition');
         if (condition) {
-            const type = this.getType(condition);
-            // Pine v5 strictly says bool, but many scripts use truthiness or my inference is slightly conservative.
-            // Allow int as well to avoid frustration until type system is 100% robust.
-            if (!this.isCompatible('bool|int', type)) {
+            const condType = this.getType(condition);
+            if (condType === 'void' || condType === 'type') {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     range: this.getRange(condition),
-                    message: `Condition of 'while' must be of type 'bool' or 'int', found '${type}'.`,
+                    message: `Condition of 'while' cannot be '${condType}'.`,
                     source: 'Pine Script'
                 });
             }
@@ -985,12 +1041,12 @@ export class Analyzer {
     private handleIfStatement(node: SyntaxNode, diagnostics: Diagnostic[]) {
         const condition = node.childForFieldName('condition');
         if (condition) {
-            const type = this.getType(condition);
-            if (!this.isCompatible('bool|int', type)) {
+            const condType = this.getType(condition);
+            if (condType === 'void' || condType === 'type') {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     range: this.getRange(condition),
-                    message: `Condition of 'if' must be of type 'bool' or 'int', found '${type}'.`,
+                    message: `Condition of 'if' cannot be '${condType}'.`,
                     source: 'Pine Script'
                 });
             }
@@ -1058,22 +1114,17 @@ export class Analyzer {
         const currentScope = this.scopeStack[this.scopeStack.length - 1];
         const localSym = currentScope.get(name);
 
-        // If it's a new declaration (variable_declaration), it shadows the parent.
-        // We only check compatibility if it already exists in the current scope.
+        // If it's a new declaration (variable_declaration), it shadows any parent scope symbols.
+        // Even in the same block, we allow re-definition to be robust against parser fractures.
         if ((node.type === 'variable_declaration' || node.type === 'simple_declaration')) {
-            if (!localSym) {
-                const rhsNode = node.childForFieldName('value') || node.child(node.childCount - 1);
-                if (rhsNode) {
-                    const rhsType = this.getType(rhsNode);
-                    const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
-                    const declaredType = explicitTypeNode?.text || rhsType;
-                    this.define(name, { name: declaredType, qualifier: Qualifier.Simple }, nameNode);
-                }
-                return;
-            } else if (!localSym.range) {
-                // Fix missing range from Pass 1
-                localSym.range = this.getRange(nameNode);
+            const rhsNode = node.childForFieldName('value') || node.child(node.childCount - 1);
+            if (rhsNode) {
+                const rhsType = this.getType(rhsNode);
+                const explicitTypeNode = node.namedChildren.find(c => c.type === 'type');
+                const declaredType = explicitTypeNode?.text || rhsType;
+                this.define(name, { name: declaredType, qualifier: Qualifier.Simple }, nameNode);
             }
+            return;
         }
 
         const lhsSym = this.getSymbol(name);
@@ -1234,10 +1285,28 @@ export class Analyzer {
         if (!funcNameNode) return;
 
         const funcName = funcNameNode.text;
+
+        // NO NOISE POLICY (Aggressive): 
+        // If the function name looks like fractured code (contains newlines, is too long, or has invalid punctuation), bail immediately.
+        // We also use a regex to ensure it only contains valid Pineapple name characters (optional single dot).
+        if (funcName.includes('\n') || funcName.length > 80 || !/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(funcName) || funcNameNode.type === 'ERROR') {
+            return;
+        }
+
         const isMemberAccess = funcNameNode.type === 'member_access';
 
-        // Skip if it's a keyword (e.g., mis-parsed 'if' statement)
-        if (Analyzer.KEYWORDS.has(funcName)) {
+        if (Analyzer.KEYWORDS.has(funcName) || Analyzer.KEYWORDS.has(funcName.split(/\s|\(/)[0])) {
+            return;
+        }
+
+        // Namespace misuse: ta(close), strategy(1), etc.
+        // Some things are both namespaces and functions (e.g. alert, plot, box). Only flag if NOT a function.
+        if (Analyzer.STANDARD_NAMESPACES.has(funcName) && !this.definitions.has(funcName) && !this.userFunctionTable.has(funcName)) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: this.getRange(funcNameNode),
+                message: `Cannot use namespace '${funcName}' as a function.`
+            });
             return;
         }
 
@@ -1263,11 +1332,21 @@ export class Analyzer {
 
         if (!definition && isMemberAccess) {
             const memberNode = funcNameNode.childForFieldName('member');
-            if (memberNode) {
+            const objectNode = funcNameNode.childForFieldName('object');
+            if (memberNode && objectNode) {
                 const memberName = memberNode.text;
-                definition = this.definitions.get(memberName) || this.userFunctionTable.get(memberName);
-                if (definition) {
-                    isMethodCall = true;
+                const objectType = this.getType(objectNode);
+                const prefix = objectNode.text.split('.')[0];
+
+                // If it's a known namespace access (e.g. math.abs), we should NOT fall back to global 'abs'
+                // because standard library names are strict.
+                if (Analyzer.STANDARD_NAMESPACES.has(prefix) && !objectNode.text.includes('(')) {
+                    // Skip fallback lookup for standard built-ins
+                } else {
+                    definition = this.definitions.get(memberName) || this.userFunctionTable.get(memberName);
+                    if (definition) {
+                        isMethodCall = true;
+                    }
                 }
             }
         }
@@ -1275,15 +1354,30 @@ export class Analyzer {
         if (!definition) {
             // Phase 15: Strict Built-in matching
             if (isMemberAccess) {
-                const parts = funcName.split('.');
-                const prefix = parts[0];
-                if (Analyzer.STANDARD_NAMESPACES.has(prefix)) {
-                    diagnostics.push({
-                        severity: DiagnosticSeverity.Error,
-                        range: this.getRange(funcNameNode),
-                        message: `Undefined function '${funcName}' in standard library '${prefix}'.`
-                    });
-                    return;
+                const memberNode = funcNameNode.childForFieldName('member');
+                const objectNode = funcNameNode.childForFieldName('object');
+                if (memberNode && objectNode) {
+                    const memberName = memberNode.text;
+                    const objectType = this.getType(objectNode);
+                    const prefix = objectNode.text.split('.')[0];
+
+                    // If it's a known namespace access (e.g. str.split), check if it's truly undefined
+                    if (Analyzer.STANDARD_NAMESPACES.has(prefix)) {
+                        // If the first part is a simple namespace, and it's not a chained method call
+                        if (!objectNode.text.includes('(') && !this.definitions.has(funcName)) {
+                            diagnostics.push({
+                                severity: DiagnosticSeverity.Error,
+                                range: this.getRange(funcNameNode),
+                                message: `Undefined function '${funcName}' in standard library '${prefix}'.`
+                            });
+                            return;
+                        }
+                    }
+                    // If it's a method call on a known type (like array.get(...).pop()), skip "undefined" check
+                    // because our definition table might not have all chained permutations.
+                    if (objectType.includes('<') || objectType.includes('[') || objectNode.type === 'function_call') {
+                        return;
+                    }
                 }
             }
 
@@ -1302,11 +1396,20 @@ export class Analyzer {
             }
 
             // NO NOISE POLICY: If it contains a dot and we're not sure, don't report.
-            if (funcName.includes('.')) {
-                return;
+            if (funcName.includes('.') || funcName.includes('(')) return;
+
+            // NO NOISE: Suppress if inside ERROR or neighboring ERROR.
+            if (this.isInsideError(node)) return;
+
+            const parentNode = node.parent;
+            // Orphan top-level calls (likely noise if unknown and fractured)
+            if (parentNode?.type === 'source_file' || parentNode?.type === 'block' || parentNode?.type === 'expression_statement') {
+                if (funcName.length > 20 || !/^[a-zA-Z_]\w*$/.test(funcName)) return;
             }
 
-            // Report as undefined.
+            // If it's an assignment or argument, we are more strict, but we still bail on garbage names.
+            if (funcName.length > 40 || funcName.includes('\n')) return;
+
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(funcNameNode),
@@ -1337,6 +1440,7 @@ export class Analyzer {
                     'history_reference',
                     'return_statement',
                     'math_expression', // In case it's lumped
+                    'simple_declaration',
                 ];
 
                 let usedAsValue = valueExpectedParents.includes(parent.type);
@@ -1356,7 +1460,7 @@ export class Analyzer {
                 }
 
                 if (usedAsValue) {
-                    const isAssignment = parent.type === 'variable_declaration' || parent.type === 'assignment';
+                    const isAssignment = parent.type === 'variable_declaration' || parent.type === 'assignment' || parent.type === 'simple_declaration';
                     const message = isAssignment
                         ? `Cannot assign result of '${funcName}()' to a variable - this function returns void.`
                         : `Function '${funcName}()' returns void and cannot be used as an expression.`;
@@ -1376,12 +1480,14 @@ export class Analyzer {
 
         // Count provided arguments
         const providedCount = isMethodCall ? args.length + 1 : args.length;
-        const requiredParams = definition.params.filter((p: any) => p.required);
+        const requiredParams = definition.params.filter((p: any) => p.optional === false || p.required === true);
         const totalParams = definition.params.length;
         const isVariadic = definition.params.some((p: any) => p.name.includes('...'));
 
+        const isRelaxed = Analyzer.RELAXED_PARAM_FUNCTIONS.has(funcName);
+
         // 1. Check for too many arguments 
-        if (!isVariadic && totalParams > 0 && providedCount > totalParams) {
+        if (!isVariadic && totalParams > 0 && providedCount > totalParams && !isRelaxed) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(argListNode || node),
@@ -1390,11 +1496,20 @@ export class Analyzer {
         }
 
         // 2. Check for missing required parameters
-        if (totalParams > 0 && providedCount < requiredParams.length) {
+        if (totalParams > 0 && providedCount < requiredParams.length && !isRelaxed) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: this.getRange(funcNameNode),
                 message: `Missing required arguments for '${funcName}()'. Expected ${requiredParams.length}, found ${providedCount}.`
+            });
+        }
+
+        // 3. Relaxed Check: Only error if ZERO arguments for functions that need them
+        if (isRelaxed && providedCount === 0 && requiredParams.length > 0) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: this.getRange(funcNameNode),
+                message: `Missing required arguments for '${funcName}()'.`
             });
         }
 

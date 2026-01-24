@@ -55,14 +55,14 @@ npx vsce package
 ## 🛠 Developer Guide
 
 ### Running Quality Tests
-The project includes a dedicated test suite for verifying linter logic and type infection.
+The project includes a dedicated test suite for verifying linter logic and type inference.
 
 ```bash
 cd pine-script-extension/server
-npm run compile
-node out/tests/test_runner.js
+npm run build
+node out/test/test_runner.js
 ```
-*Note: New test cases should be added to `pine-script-extension/server/src/tests/cases.json`.*
+*Note: New test cases should be added to `pine-script-extension/server/test/cases.json`.*
 
 ### Updating Built-in Metadata
 To update function signatures or return types in the linter:

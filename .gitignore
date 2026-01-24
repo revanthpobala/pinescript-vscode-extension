@@ -26,3 +26,4 @@ tree-sitter-pinescript/bindings/swift/
 # Environment
 .env
 archive/*
+testing/*

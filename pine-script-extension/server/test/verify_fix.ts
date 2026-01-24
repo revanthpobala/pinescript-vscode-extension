@@ -1,5 +1,5 @@
-import { Analyzer } from './analyzer';
-import * as definitions from './data/definitions.json';
+import { Analyzer } from '../src/analyzer';
+import * as definitions from '../src/data/definitions.json';
 
 
 // Mock SyntaxNode

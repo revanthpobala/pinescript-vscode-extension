@@ -1,12 +1,12 @@
 const { Parser, Language } = require('web-tree-sitter');
 const path = require('path');
 const fs = require('fs');
-const { Analyzer } = require('../out/analyzer');
+const { Analyzer } = require('../out/src/analyzer');
 
 async function main() {
     await Parser.init();
     const parser = new Parser();
-    const wasmPath = path.join(__dirname, '../out/tree-sitter-pinescript.wasm');
+    const wasmPath = path.join(__dirname, '../out/src/tree-sitter-pinescript.wasm');
     const lang = await Language.load(wasmPath);
     parser.setLanguage(lang);
 

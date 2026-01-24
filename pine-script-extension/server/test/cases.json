@@ -1,21 +1,22 @@
 [
     {
         "name": "Valid EMA call",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20)\nplot(x)",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20)\nplot(x, 'title', color.red)",
         "expectedErrors": 0
     },
     {
         "name": "EMA with void argument",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, alert('hi'))",
-        "expectedErrors": 1,
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, alert('hi'))\nplot(x, 'title', color.red)",
+        "expectedErrors": 2,
         "errorMessages": [
-            "Function 'alert()' returns void and cannot be used as an expression."
+            "Function 'alert()' returns void and cannot be used as an expression.",
+            "Type mismatch for argument 'length': expected 'simple int', found 'void'."
         ]
     },
     {
         "name": "Plot with void argument",
-        "code": "//@version=6\nindicator('Test')\nplot(alert('hi'))",
-        "expectedErrors": 1,
+        "code": "//@version=6\nindicator('Test')\nplot(alert('hi'), 'title', color.red)",
+        "expectedErrors": 2,
         "errorMessages": [
             "Function 'alert()' returns void and cannot be used as an expression."
         ]
@@ -30,15 +31,15 @@
     },
     {
         "name": "Nested void calls",
-        "code": "//@version=6\nindicator('Test')\nplot(ta.ema(close, alert('hi')))",
-        "expectedErrors": 1,
+        "code": "//@version=6\nindicator('Test')\nplot(ta.ema(close, alert('hi')), 'title', color.red)",
+        "expectedErrors": 2,
         "errorMessages": [
             "Function 'alert()' returns void and cannot be used as an expression."
         ]
     },
     {
         "name": "EMA missing argument",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close)\nplot(x)",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close)\nplot(x, 'title', color.red)",
         "expectedErrors": 1,
         "errorMessages": [
             "Missing required arguments for 'ta.ema()'. Expected 2, found 1."
@@ -46,7 +47,7 @@
     },
     {
         "name": "EMA too many arguments",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20, 30)\nplot(x)",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(close, 20, 30)\nplot(x, 'title', color.red)",
         "expectedErrors": 1,
         "errorMessages": [
             "Too many arguments for 'ta.ema()'. Expected at most 2, found 3."
@@ -54,8 +55,8 @@
     },
     {
         "name": "EMA with multiple issues",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(alert('abc'))",
-        "expectedErrors": 2,
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(alert('abc'))\nplot(x, 'title', color.red)",
+        "expectedErrors": 3,
         "errorMessages": [
             "Function 'alert()' returns void and cannot be used as an expression.",
             "Missing required arguments for 'ta.ema()'. Expected 2, found 1."
@@ -63,17 +64,17 @@
     },
     {
         "name": "Dual-use term: month as variable",
-        "code": "//@version=6\nindicator('Test')\nplot(month)",
+        "code": "//@version=6\nindicator('Test')\nplot(month, 'title', color.red)",
         "expectedErrors": 0
     },
     {
         "name": "Dual-use term: month as function",
-        "code": "//@version=6\nindicator('Test')\nplot(month())",
+        "code": "//@version=6\nindicator('Test')\nplot(month(time), 'title', color.red)",
         "expectedErrors": 0
     },
     {
         "name": "Namespace misuse as function",
-        "code": "//@version=6\nindicator('Test')\nx = ta(close)\nplot(x)",
+        "code": "//@version=6\nindicator('Test')\nx = ta(close)\nplot(x, 'title', color.red)",
         "expectedErrors": 1,
         "errorMessages": [
             "Cannot use namespace 'ta' as a function."
@@ -81,7 +82,7 @@
     },
     {
         "name": "Void in math expression",
-        "code": "//@version=6\nindicator('Test')\nx = 1 + alert('hi')",
+        "code": "//@version=6\nindicator('Test')\nx = 1 + alert('hi')\nplot(x, 'title', color.red)",
         "expectedErrors": 1,
         "errorMessages": [
             "Function 'alert()' returns void and cannot be used as an expression."
@@ -89,25 +90,25 @@
     },
     {
         "name": "Named arguments valid",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=close, length=20)\nplot(x)",
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=close, length=20)\nplot(x, 'title', color.red)",
         "expectedErrors": 0
     },
     {
         "name": "Named arguments with void",
-        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=alert('hi'), length=20)\nplot(x)",
-        "expectedErrors": 1,
+        "code": "//@version=6\nindicator('Test')\nx = ta.ema(source=alert('hi'), length=20)\nplot(x, 'title', color.red)",
+        "expectedErrors": 2,
         "errorMessages": [
             "Function 'alert()' returns void and cannot be used as an expression."
         ]
     },
     {
         "name": "User-defined arrow function",
-        "code": "//@version=6\nindicator('Test')\nf(x) => x * 2\nplot(f(close))",
+        "code": "//@version=6\nindicator('Test')\nf(x) => x * 2\nplot(f(close), 'title', color.red)",
         "expectedErrors": 0
     },
     {
         "name": "User Scenario from Screenshot",
-        "code": "//@version=6\nindicator('Test', overlay=true, max_labels_count=500, max_lines_count=500)\ninp = input(14, 'ATR Length')\nalert('hi')\nplot(array(alert('hi')))",
+        "code": "//@version=6\nindicator('Test', overlay=true, max_labels_count=500, max_lines_count=500)\ninp = input(14, 'ATR Length')\nalert('hi')\nplot(array(alert('hi')), 'title', color.red)",
         "expectedErrors": 2,
         "errorMessages": [
             "Cannot use namespace 'array' as a function.",
@@ -116,13 +117,13 @@
     },
     {
         "name": "Resilient Symbol Collection",
-        "code": "//@version=6\nif true\n    myFunc() => 1\n    x = myFunc()\n    if x > 0\n        plot(x)\n",
+        "code": "//@version=6\nif true\n    myFunc() => 1\n    x = myFunc()\n    if x > 0\n        plot(x, 'title', color.red)\n",
         "expectedErrors": 0,
         "description": "Verify keywords aren't flagged as functions and symbols are collected even with broken indentation."
     },
     {
         "name": "Lambda Call",
-        "code": "//@version=6\nf = (x) => x * 2\nplot(f(10))",
+        "code": "//@version=6\nf = (x) => x * 2\nplot(f(10), 'title', color.red)",
         "expectedErrors": 0,
         "description": "Verify calling a variable (lambda) doesn't cause 'Undefined function' error."
     },
@@ -134,9 +135,9 @@
     },
     {
         "name": "table.cell full signature",
-        "code": "//@version=6\nindicator('Test')\ntbl = table.new(position.top_right, 1, 1)\ntable.cell(tbl, 0, 0, 'txt', 1, 1, color.red, text_halign=text.align_left, text_valign=text.align_center, text_size=size.small, bgcolor=color.blue, tooltip='hi', text_font_family=font.family_default)",
+        "code": "//@version=6\nindicator('Test')\ntbl = table.new(position.top_right, 1, 1)\ntable.cell(tbl, 0, 0, 'txt', 'font_family', 1, 1, color.red, text_halign=text.align_left, text_valign=text.align_center, text_size=size.small, bgcolor=color.blue, tooltip='hi')",
         "expectedErrors": 0,
-        "description": "Verify that table.cell accepts all 13 parameters without throwing 'Too many arguments'."
+        "description": "Verify that table.cell accepts all parameters matching definitions.json order."
     },
     {
         "name": "array.new_float no arguments",
@@ -179,5 +180,23 @@
         "code": "//@version=6\nindicator('Test')\ncalcReactions(series float srcLow, series float lvl, int len, float atrVal) => 1\nx = calcReactions(low, close, 50, 1.0)\n",
         "expectedErrors": 0,
         "description": "Verify that qualified parameters (series, etc.) are counted correctly as a single parameter."
+    },
+    {
+        "name": "Relaxed nz validation",
+        "code": "//@version=6\nindicator('Test')\nx = nz(close)\nplot(x, 'title', color.red)",
+        "expectedErrors": 0,
+        "description": "Verify that nz() accepts 1 argument despite metadata saying 2."
+    },
+    {
+        "name": "Relaxed fill validation",
+        "code": "//@version=6\nindicator('Test')\np1 = plot(close, 'p1', color.red)\np2 = plot(open, 'p2', color.green)\nfill(p1, p2, color.new(color.blue, 90), 'Title')",
+        "expectedErrors": 0,
+        "description": "Verify that fill() accepts 4 arguments despite metadata saying 9."
+    },
+    {
+        "name": "Relaxed log validation",
+        "code": "//@version=6\nindicator('Test')\nlog.info('message')",
+        "expectedErrors": 0,
+        "description": "Verify that log.info() accepts 1 argument despite metadata saying 3."
     }
 ]

@@ -1,5 +1,0 @@
-//@version=6
-var int x = 10
-if x > 5
-    x := x + 1
-    ta.rsi(close, 14)

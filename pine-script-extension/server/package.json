@@ -1,12 +1,15 @@
 {
   "name": "pine-script-extension-server",
   "description": "Pine Script v6 Language Server",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {
     "compile": "tsc -b",
-    "watch": "tsc -b -w"
+    "watch": "tsc -b -w",
+    "debug": "node tools/debug_diagnostics.js",
+    "build": "npm run compile && cp wasm/tree-sitter-pinescript.wasm out/src/ && cp -r src/data out/src/ && cp test/cases.json out/test/",
+    "postinstall": "mkdir -p out && cp wasm/tree-sitter-pinescript.wasm out/"
   },
   "dependencies": {
     "web-tree-sitter": "^0.26.3",
