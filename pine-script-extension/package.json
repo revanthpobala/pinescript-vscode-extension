@@ -10,6 +10,9 @@
     "type": "git",
     "url": "https://github.com/revanthpobala/pinescript-vscode-extension"
   },
+  "bugs": {
+    "url": "https://github.com/revanthpobala/pinescript-vscode-extension/issues"
+  },
   "homepage": "https://github.com/revanthpobala/pinescript-vscode-extension",
   "icon": "resources/icon.png",
   "galleryBanner": {
