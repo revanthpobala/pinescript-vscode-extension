@@ -16,6 +16,7 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
 | :--- | :--- | :--- |
 | **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
 | **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
+| **Advanced Verification** | Catch void assignments and parameter leaks. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
 
 ---
 
@@ -27,7 +28,7 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
 
 ### Quick Installation (VSIX)
 The easiest way to use Pine Script Pro is to install the pre-compiled extension:
-1. Download the latest `pine-script-pro-1.0.0.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases).
+1. Download the latest `pine-script-pro-1.1.2.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases/tag/v1.1.2).
 2. In VS Code, run `Cmd+Shift+P` → **Extensions: Install from VSIX...**
 3. Select the file and restart VS Code.
 
