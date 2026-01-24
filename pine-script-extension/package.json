@@ -72,7 +72,10 @@
     "bundle": "node esbuild.js --production",
     "watch": "tsc -b -w",
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
-    "vscode:prepublish": "npm run bundle"
+    "vscode:prepublish": "npm run bundle",
+    "publish:vscode": "vsce publish",
+    "publish:ovsx": "ovsx publish",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

@@ -8,6 +8,10 @@
 **/.eslintrc.json
 client/node_modules/
 server/node_modules/
+server/test/
+server/tools/
+server/reproduce.pine
+.DS_Store
 !server/node_modules/web-tree-sitter/**
 esbuild.js
 !server/out/server.js
