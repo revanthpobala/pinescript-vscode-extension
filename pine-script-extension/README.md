@@ -5,9 +5,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981" alt="Marketplace Version" />
-  <img src="https://img.shields.io/visual-studio-marketplace/i/revanthpobala.pine-script-pro?style=for-the-badge&color=007acc" alt="Installs" />
-  <img src="https://img.shields.io/badge/VS%20Code-1.75.0%2B-blue?style=for-the-badge&logo=visual-studio-code" alt="Engine Version" />
+  <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981&label=VS%20Code" alt="VS Code Marketplace Version" />
+  <img src="https://img.shields.io/visual-studio-marketplace/i/revanthpobala.pine-script-pro?style=for-the-badge&color=007acc" alt="VS Code Installs" />
+  <br/>
+  <img src="https://img.shields.io/open-vsx/v/revanthpobala/pine-script-pro?style=for-the-badge&color=purple&label=Open%20VSX" alt="Open VSX Version" />
+  <img src="https://img.shields.io/open-vsx/dt/revanthpobala/pine-script-pro?style=for-the-badge&color=purple" alt="Open VSX Downloads" />
+  <br/>
   <img src="https://img.shields.io/badge/License-Modified%20MIT-orange?style=for-the-badge" alt="License" />
 </p>
 

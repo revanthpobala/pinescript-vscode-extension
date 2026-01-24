@@ -10,12 +10,16 @@ Welcome, Agent. This document covers the core philosophies and maintenance workf
 pine-script-extension/
 ├── client/src/extension.ts        # Language Client entry point
 ├── server/
-│   ├── src/server.ts              # LSP server (Hover, Completion, Signature)
-│   ├── src/analyzer.ts            # Core Logic: Type Analysis & Symbol Collection
-│   ├── src/types.ts               # PineType, Qualifier enum
-│   ├── src/data/definitions.json  # Metadata for 800+ built-in functions
-│   └── scripts/                   # Maintenance scripts
-└── tree-sitter-pinescript/        # Grammer Source (Patched scanner.c)
+│   ├── src/                       # Production Source Code
+│   │   ├── server.ts              # LSP server (Hover, Completion, Signature)
+│   │   ├── analyzer.ts            # Core Logic: Type Analysis & Symbol Collection
+│   │   └── data/definitions.json  # Metadata for 800+ built-in functions
+│   ├── test/                      # Automated Quality Tests
+│   │   ├── cases.json             # 29+ core verification scenarios
+│   │   └── test_runner.ts         # Custom test harness
+│   └── tools/                     # Development Utilities
+│       └── debug_diagnostics.js   # CLI debugger for local script analysis
+└── tree-sitter-pinescript/        # Grammar Source (Patched scanner.c)
 ```
 
 ---
@@ -37,7 +41,7 @@ Found in `analyzer.ts` (Pass 1):
 
 All linter logic must be verified via our custom test runner.
 
-1.  **Add a Test Case**: Edit `pine-script-extension/server/src/tests/cases.json`.
+1.  **Add a Test Case**: Edit `pine-script-extension/server/test/cases.json`.
 2.  **Format**:
     ```json
     {
@@ -50,7 +54,8 @@ All linter logic must be verified via our custom test runner.
 3.  **Run Tests**:
     ```bash
     cd pine-script-extension/server
-    npm run compile && node out/tests/test_runner.js
+    npm run build
+    node out/test/test_runner.js
     ```
 
 ---
@@ -58,18 +63,24 @@ All linter logic must be verified via our custom test runner.
 ## 🔧 Maintenance Workflows
 
 ### Updating Built-ins
- Built-in metadata (parameters, return types) is stored in `definitions.json`. This file is partially managed by `scripts/update_core_params.js`. If you add logic for a new namespace (e.g., `request.*`), update either the JSON or the script.
+ Built-in metadata (parameters, return types) is stored in `src/data/definitions.json`. This file is partially managed by `tools/update_core_params.js`. If you add logic for a new namespace (e.g., `request.*`), update either the JSON or the script.
 
 ### Handling WASM Crashes
 The `tree-sitter-pinescript/src/scanner.c` has been modified to disable the indentation scanner. This prevents WASM heap overflows but results in more `ERROR` nodes in the AST. Always verify the `analyzer.ts` resilient collection if adding new parsing logic.
 
 ---
 
-## 🚀 Build Commands
+## 🚀 Build & Publish Commands
 
 ```bash
 cd pine-script-extension
+
+# Build
 npm run postinstall  # Installs all sub-dependencies
 npm run bundle       # Bundles client/server with esbuild
 npx vsce package     # Generates VSIX
+
+# Publish (Dual-Registry)
+npm run publish:vscode  # Publishes to VS Code Marketplace
+npm run publish:ovsx    # Publishes to Open VSX Registry
 ```
