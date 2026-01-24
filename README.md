@@ -1,5 +1,15 @@
 # Pine Script Pro: Project Workspace
 
+<p align="center">
+  <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981&label=VS%20Code" alt="VS Code Marketplace Version" />
+  <img src="https://img.shields.io/visual-studio-marketplace/i/revanthpobala.pine-script-pro?style=for-the-badge&color=007acc" alt="VS Code Installs" />
+  <br/>
+  <img src="https://img.shields.io/open-vsx/v/revanthpobala/pine-script-pro?style=for-the-badge&color=purple&label=Open%20VSX" alt="Open VSX Version" />
+  <img src="https://img.shields.io/open-vsx/dt/revanthpobala/pine-script-pro?style=for-the-badge&color=purple" alt="Open VSX Downloads" />
+  <br/>
+  <img src="https://img.shields.io/badge/License-Modified%20MIT-orange?style=for-the-badge" alt="License" />
+</p>
+
 This repository contains the source code for **Pine Script Pro**, a high-performance VS Code extension for TradingView developers, along with its custom Tree-sitter grammar.
 
 ## 📁 Repository Structure
