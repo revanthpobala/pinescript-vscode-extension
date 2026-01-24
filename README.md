@@ -1,4 +1,8 @@
-# Pine Script Pro: Project Workspace
+# Pine Script Pro
+
+<p align="center">
+  <img src="pine-script-extension/resources/icon.png" width="128" />
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981&label=VS%20Code" alt="VS Code Marketplace Version" />
@@ -10,13 +14,10 @@
   <img src="https://img.shields.io/badge/License-Modified%20MIT-orange?style=for-the-badge" alt="License" />
 </p>
 
-This repository contains the source code for **Pine Script Pro**, a high-performance VS Code extension for TradingView developers, along with its custom Tree-sitter grammar.
-
-## 📁 Repository Structure
-
-- [**pine-script-extension/**](pine-script-extension/): The primary VS Code extension source.
-  - See the [**Extension Guide**](pine-script-extension/README.md) for full features and visuals.
-- [**tree-sitter-pinescript/**](tree-sitter-pinescript/): Custom grammar for Pine Script v6 (Patched for WASM stability).
+<p align="center">
+  <strong>High-performance VS Code extension for TradingView developers.</strong><br>
+  Industrial-strength static analysis, intelligent type checking, and ultra-resilient parsing for Pine Script v6.
+</p>
 
 ---
 
@@ -26,7 +27,7 @@ This repository contains the source code for **Pine Script Pro**, a high-perform
 | :--- | :--- | :--- |
 | **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
 | **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
-| **Advanced Verification** | Catch void assignments and parameter leaks. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
+| **Advanced Verification** | Catch `void` assignment errors before deployment. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
 
 ---
 
