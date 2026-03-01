@@ -1,5 +1,15 @@
 # Changelog
-
+ 
+## [1.2.0] - 2026-03-01
+### Infrastructure
+- **Dependency Upgrade**: Major modernization of the development stack.
+    - Upgraded `typescript` to `^5.9.3` for improved type inference and performance.
+    - Upgraded `@types/node` to `^22.0.0` to match modern runtime requirements.
+    - Updated `web-tree-sitter` to `^0.26.6` for improved stability in the WASM parser.
+    - Updated `esbuild` to `^0.27.3` for faster and more reliable bundling.
+- **Project Maintenance**: Synchronized dependencies across Root, Client, and Server to ensure build consistency.
+- **Ecosystem Recognition**: Formally added to the `awesome-pinescript` community resource.
+ 
 ## [1.1.2] - 2026-01-24
 ### Stability & Precision
 - **Relaxed Argument Validation**: Implemented smart validation relaxation for built-ins with flexible signatures (`nz`, `fill`, `plotchar`, `plotshape`, `log.info`, `log.warning`, `log.error`). This eliminates hundreds of false positive "Missing required arguments" errors in large scripts.

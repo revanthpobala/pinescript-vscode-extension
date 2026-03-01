@@ -1,7 +1,7 @@
 {
   "name": "pine-script-extension-server",
   "description": "Pine Script v6 Language Server",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {
@@ -12,12 +12,12 @@
     "postinstall": "mkdir -p out && cp wasm/tree-sitter-pinescript.wasm out/"
   },
   "dependencies": {
-    "web-tree-sitter": "^0.26.3",
+    "web-tree-sitter": "^0.26.6",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
   }
 }
