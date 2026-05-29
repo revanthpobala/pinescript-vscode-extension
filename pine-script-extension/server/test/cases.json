@@ -198,5 +198,110 @@
         "code": "//@version=6\nindicator('Test')\nlog.info('message')",
         "expectedErrors": 0,
         "description": "Verify that log.info() accepts 1 argument despite metadata saying 3."
+    },
+    {
+        "name": "[issue#2] plot(close) — series only, no false positive",
+        "code": "//@version=6\nindicator('repro')\nplot(close)",
+        "expectedErrors": 0,
+        "description": "Regression: plot() requires only 'series'. title, color etc. are all optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plot with series and title only",
+        "code": "//@version=6\nindicator('Test')\nplot(close, 'My Plot')",
+        "expectedErrors": 0,
+        "description": "plot() with series + title positional args — still valid, no false positive."
+    },
+    {
+        "name": "[issue#2] plot with named series only",
+        "code": "//@version=6\nindicator('Test')\nplot(series=close)",
+        "expectedErrors": 0,
+        "description": "plot() called with only the named required arg. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plot() missing series — must still error",
+        "code": "//@version=6\nindicator('Test')\nplot()",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Missing required arguments for 'plot()'. Expected 1, found 0."
+        ],
+        "description": "plot() with no args must still fire — series is the one required param."
+    },
+    {
+        "name": "[issue#2] plotshape(condition) — series only",
+        "code": "//@version=6\nindicator('Test')\nplotshape(close > open)",
+        "expectedErrors": 0,
+        "description": "plotshape() requires only 'series'. title, text, show_last are optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plotchar(condition) — series only",
+        "code": "//@version=6\nindicator('Test')\nplotchar(close > open)",
+        "expectedErrors": 0,
+        "description": "plotchar() requires only 'series'. title, char, text, show_last are optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plotarrow(series) — series only",
+        "code": "//@version=6\nindicator('Test')\nplotarrow(close - open)",
+        "expectedErrors": 0,
+        "description": "plotarrow() requires only 'series'. title, show_last are optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plotbar full OHLC — no false positive",
+        "code": "//@version=6\nindicator('Test', overlay=true)\nplotbar(open, high, low, close)",
+        "expectedErrors": 0,
+        "description": "plotbar() requires open/high/low/close only. show_last is optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plotcandle full OHLC — no false positive",
+        "code": "//@version=6\nindicator('Test', overlay=true)\nplotcandle(open, high, low, close)",
+        "expectedErrors": 0,
+        "description": "plotcandle() requires open/high/low/close only. show_last is optional. Must produce zero diagnostics."
+    },
+    {
+        "name": "[issue#2] plot full signature — no regression",
+        "code": "//@version=6\nindicator('Test')\nplot(close, 'Close', color.blue, 2, plot.style_line, false, 0.0, 0, false, true, 10, display.all)",
+        "expectedErrors": 0,
+        "description": "plot() with all params supplied must still pass — ensure no regressions from the optional fix."
+    },
+    {
+        "name": "[audit] barcolor(color) — show_last optional",
+        "code": "//@version=6\nindicator('Test', overlay=true)\nbarcolor(close > open ? color.green : color.red)",
+        "expectedErrors": 0,
+        "description": "barcolor() with just color arg. show_last was incorrectly required — must produce zero diagnostics."
+    },
+    {
+        "name": "[audit] bgcolor(color) — show_last optional",
+        "code": "//@version=6\nindicator('Test')\nbgcolor(close > open ? color.new(color.green, 90) : color.new(color.red, 90))",
+        "expectedErrors": 0,
+        "description": "bgcolor() with just color arg. show_last was incorrectly required — must produce zero diagnostics."
+    },
+    {
+        "name": "[audit] hline(price) — title optional",
+        "code": "//@version=6\nindicator('Test')\nhline(0)",
+        "expectedErrors": 0,
+        "description": "hline() with just price arg. title was incorrectly required — must produce zero diagnostics."
+    },
+    {
+        "name": "[audit] hline(price, title) — both supplied, no error",
+        "code": "//@version=6\nindicator('Test')\nhline(70, 'Overbought')",
+        "expectedErrors": 0,
+        "description": "hline() with price + title — standard usage, no diagnostics."
+    },
+    {
+        "name": "[audit] plotshape() with zero args — must error",
+        "code": "//@version=6\nindicator('Test')\nplotshape()",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Missing required arguments for 'plotshape()'. Expected 1, found 0."
+        ],
+        "description": "plotshape() with no args must fire — series is the one required param. Ensures removal from RELAXED set didn't break this."
+    },
+    {
+        "name": "[audit] plotchar() with zero args — must error",
+        "code": "//@version=6\nindicator('Test')\nplotchar()",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Missing required arguments for 'plotchar()'. Expected 1, found 0."
+        ],
+        "description": "plotchar() with no args must fire — series is the one required param. Ensures removal from RELAXED set didn't break this."
     }
 ]

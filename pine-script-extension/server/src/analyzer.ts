@@ -180,7 +180,7 @@ export class Analyzer {
     // Functions with broken or overly strict parameter metadata in definitions.json.
     // We relax validation for these to prevent false positive "Missing required arguments" errors.
     private static readonly RELAXED_PARAM_FUNCTIONS = new Set([
-        'nz', 'fill', 'plotchar', 'plotshape', 'log.info', 'log.warning', 'log.error'
+        'nz', 'fill', 'log.info', 'log.warning', 'log.error'
     ]);
 
     constructor(definitionsJson: any) {

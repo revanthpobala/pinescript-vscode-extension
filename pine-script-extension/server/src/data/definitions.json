@@ -517,7 +517,7 @@
           "name": "title",
           "desc": "Title of the plot.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "color",
@@ -571,7 +571,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of bars (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "display",
@@ -596,7 +596,7 @@
           "name": "title",
           "desc": "Title of the plot.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "style",
@@ -626,7 +626,7 @@
           "name": "text",
           "desc": "Text to display with the shape. You can use multiline text, to separate lines use '\\n' escape sequence.  \nExample: 'line one\\nline two'.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "textcolor",
@@ -650,7 +650,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of shapes (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "display",
@@ -675,13 +675,13 @@
           "name": "title",
           "desc": "Title of the plot.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "char",
           "desc": "Character to use as a visual shape.",
           "type": "input string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "location",
@@ -705,7 +705,7 @@
           "name": "text",
           "desc": "Text to display with the shape. You can use multiline text, to separate lines use '\\n' escape sequence.  \nExample: 'line one\\nline two'.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "textcolor",
@@ -729,7 +729,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of chars (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "display",
@@ -754,7 +754,7 @@
           "name": "title",
           "desc": "Title of the plot.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "colorup",
@@ -796,7 +796,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of arrows (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "display",
@@ -857,7 +857,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of bars (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "display",
@@ -924,7 +924,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of candles (from the last bar back to the past) to plot on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "bordercolor",
@@ -967,7 +967,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of bars (from the last bar back to the past) to fill on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "title",
@@ -1010,7 +1010,7 @@
           "name": "show_last",
           "desc": "If set, defines the number of bars (from the last bar back to the past) to fill on chart.",
           "type": "input int",
-          "optional": false
+          "optional": true
         },
         {
           "name": "title",
@@ -1896,7 +1896,7 @@
           "name": "title",
           "desc": "Title of the object.",
           "type": "const string",
-          "optional": false
+          "optional": true
         },
         {
           "name": "color",
