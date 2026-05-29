@@ -1,5 +1,21 @@
 # Changelog
  
+## [1.2.1] - 2026-05-29
+### Fixed
+- **False Positive: `plot(close)` flagged as error** — `title` and `show_last` were incorrectly marked as required in `definitions.json`. Only `series` is required for `plot()`. Resolves [#2](https://github.com/revanthpobala/pinescript-vscode-extension/issues/2).
+- **False Positives across all `plot*` functions** — Corrected 16 parameters marked `optional: false` that are genuinely optional per the Pine Script v5/v6 reference:
+  - `plot`: `title`, `show_last`
+  - `plotshape`: `title`, `text`, `show_last`
+  - `plotchar`: `title`, `char`, `text`, `show_last`
+  - `plotarrow`: `title`, `show_last`
+  - `plotbar`: `show_last`
+  - `plotcandle`: `show_last`
+  - `barcolor`: `show_last`
+  - `bgcolor`: `show_last`
+  - `hline`: `title`
+- **Restored zero-arg validation for `plotshape()` and `plotchar()`** — Removed them from the `RELAXED_PARAM_FUNCTIONS` bypass now that their metadata is correct. `plotshape()` and `plotchar()` with no arguments will now correctly report an error.
+- **Test coverage**: Added 18 new regression test cases (suite: 46 passing, 0 failing).
+
 ## [1.2.0] - 2026-03-01
 ### Infrastructure
 - **Dependency Upgrade**: Major modernization of the development stack.
