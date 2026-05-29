@@ -34,6 +34,7 @@
     }
   },
   "devDependencies": {
+    "nan": "^2.27.0",
     "prebuildify": "^6.0.0",
     "tree-sitter-cli": "^0.26.3"
   },
