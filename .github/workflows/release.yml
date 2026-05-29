@@ -24,7 +24,7 @@ jobs:
       # The "root" logic for the parser resides in `tree-sitter-pinescript`.
       # We install dependencies there to ensure `nan` and `tree-sitter-cli` are available.
       - name: Install tree-sitter-pinescript dependencies
-        run: npm ci
+        run: npm install
         working-directory: tree-sitter-pinescript
 
       - name: Install client dependencies
