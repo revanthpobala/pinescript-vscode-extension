@@ -23,6 +23,7 @@ interface FunctionDefinition {
     description: string;
     returnType: string;
     params: { name: string; type: string; required: boolean, desc?: string }[];
+    range?: Range;
 }
 
 export class Analyzer {
@@ -294,11 +295,144 @@ export class Analyzer {
         }
     }
 
-    public getSymbol(name: string): { name: string, qualifier: Qualifier, usageCount?: number } | undefined {
+    public getSymbol(name: string): { name: string, qualifier: Qualifier, usageCount?: number, range?: Range } | undefined {
         for (let i = this.scopeStack.length - 1; i >= 0; i--) {
             if (this.scopeStack[i].has(name)) return this.scopeStack[i].get(name);
         }
         return undefined;
+    }
+
+    public getFunctionDefinition(name: string): FunctionDefinition | undefined {
+        return this.userFunctionTable.get(name);
+    }
+
+    public getDefinitionLocation(node: SyntaxNode): Range | undefined {
+        const targetName = node.text;
+        let currentScope: SyntaxNode | null = node.parent;
+        
+        while (currentScope) {
+            if (currentScope.type === 'block' || currentScope.type === 'source_file') {
+                for (const child of currentScope.children) {
+                    if (child === node || this.isAncestor(child, node)) break;
+                    if (child.type === 'variable_declaration' || child.type === 'simple_declaration' || child.type === 'assignment') {
+                        const nameNode = child.childForFieldName('name') || child.child(0);
+                        if (nameNode?.text === targetName) {
+                            return this.getRange(nameNode);
+                        }
+                    }
+                }
+            }
+            if (currentScope.type === 'function_definition') {
+                const paramsNode = currentScope.childForFieldName('parameters');
+                if (paramsNode) {
+                    for (const p of paramsNode.namedChildren) {
+                        if (p.type === 'parameter' || p.type === 'simple_parameter') {
+                            const pName = p.childForFieldName('name') || p.namedChildren.find(c => c.type === 'identifier');
+                            if (pName?.text === targetName) {
+                                return this.getRange(pName);
+                            }
+                        }
+                    }
+                }
+            }
+            currentScope = currentScope.parent;
+        }
+        return undefined;
+    }
+
+    private isAncestor(ancestor: SyntaxNode, node: SyntaxNode): boolean {
+        let curr: SyntaxNode | null = node;
+        while (curr) {
+            if (curr === ancestor) return true;
+            curr = curr.parent;
+        }
+        return false;
+    }
+
+    public formatDocument(text: string): { range: Range, newText: string }[] {
+        const lines = text.split(/\r?\n/);
+        const edits: { range: Range, newText: string }[] = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.includes("'") || line.includes('"') || line.trim().startsWith('//')) continue;
+            
+            const oldLine = line;
+            let newLine = line.replace(/(?<![=<>!])\s*(=|:=)\s*(?![=])/g, ' $1 ');
+            newLine = newLine.replace(/,(?=[^\s])/g, ', ');
+            
+            if (newLine !== oldLine) {
+                edits.push({
+                    range: {
+                        start: { line: i, character: 0 },
+                        end: { line: i, character: oldLine.length }
+                    },
+                    newText: newLine
+                });
+            }
+        }
+        return edits;
+    }
+
+    public getInlayHints(node: SyntaxNode, range?: Range): { position: { line: number, character: number }, label: string }[] {
+        const hints: { position: { line: number, character: number }, label: string }[] = [];
+        const stack: SyntaxNode[] = [node];
+
+        while (stack.length > 0) {
+            const curr = stack.pop()!;
+            
+            if (range) {
+                // Skip nodes entirely outside the visible range to save CPU
+                if (curr.endPosition.row < range.start.line || curr.startPosition.row > range.end.line) {
+                    continue;
+                }
+            }
+            
+            if (curr.type === 'function_call') {
+                const funcPart = curr.childForFieldName('function') || curr.child(0);
+                const argListNode = curr.childForFieldName('arguments') || curr.namedChildren.find(c => c.type === 'argument_list');
+                
+                if (funcPart && argListNode) {
+                    const funcName = funcPart.text;
+                    let paramsList: { name: string, required: boolean }[] | undefined;
+
+                    // 1. Check built-ins
+                    const def = this.definitions.get(funcName);
+                    if (def && def.params) {
+                        paramsList = def.params;
+                    } 
+                    // 2. Check user-defined
+                    else if (this.userFunctionTable.has(funcName)) {
+                        paramsList = this.userFunctionTable.get(funcName)?.params;
+                    }
+
+                    if (paramsList) {
+                        let argIndex = 0;
+                        for (const arg of argListNode.namedChildren) {
+                            if (arg.type === 'argument') {
+                                const p = paramsList[argIndex];
+                                if (p) {
+                                    hints.push({
+                                        position: { line: arg.startPosition.row, character: arg.startPosition.column },
+                                        label: p.name + ':'
+                                    });
+                                }
+                                argIndex++;
+                            } else if (arg.type === 'keyword_argument') {
+                                // Keyword arguments skip positional tracking
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (let i = curr.childCount - 1; i >= 0; i--) {
+                const child = curr.child(i);
+                if (child) stack.push(child);
+            }
+        }
+        return hints;
     }
 
     // New validation helper
@@ -453,7 +587,8 @@ export class Analyzer {
                         name: nameNode.text,
                         description: 'User Defined Function',
                         returnType: 'any',
-                        params: this.extractParameters(node.childForFieldName('parameters'))
+                        params: this.extractParameters(node.childForFieldName('parameters')),
+                        range: this.getRange(nameNode)
                     });
                 }
             }

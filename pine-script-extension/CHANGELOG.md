@@ -1,5 +1,11 @@
 # Changelog
  
+## [1.3.0] - 2026-06-13
+### Added
+- **Go to Definition**: Navigate directly to variable declarations and user-defined functions by using `Cmd+Click` (`F12`). Accurately respects lexical block-scoping.
+- **Inlay Hints**: Native inline parameter labels (e.g., `source:`, `length:`) automatically populate for built-in Pine Script functions and your custom methods.
+- **Auto-Formatter**: A safe, non-destructive formatting provider that automatically standardizes spacing around assignment operators (`=`, `:=`) and commas without mangling syntax.
+- **Test-Driven Architecture**: Fully integrated LSP feature tests into the `test_runner.ts` framework, boosting suite to 50 active regression tests.
 ## [1.2.1] - 2026-05-29
 ### Fixed
 - **False Positive: `plot(close)` flagged as error** — `title` and `show_last` were incorrectly marked as required in `definitions.json`. Only `series` is required for `plot()`. Resolves [#2](https://github.com/revanthpobala/pinescript-vscode-extension/issues/2).
