@@ -23,14 +23,16 @@
 Unlike generic syntax highlighters, **Pine Script Pro** understands the execution model of Pine Script. Our custom-built analyzer is designed to handle complex indicators, massive libraries, and the latest v6 syntax with near-zero latency.
 
 ### 🛡️ Ultra-Resilient Linter (Battle-Tested for Production)
-Never get bogged down by thousands of false positives again. Our v1.1.2 engine has been successfully verified against real-world production scripts spanning 200,000+ lines.
+Never get bogged down by thousands of false positives again. Our v1.3.0 engine has been successfully verified against real-world production scripts spanning 200,000+ lines.
 - **Zero False-Positive Goal**: Specialized handling for dual-use built-ins (`alert`, `plot`, `box`) and flexible argument signatures (`nz`, `fill`, `log.*`).
 - **Greedy Symbol Scrapper**: Automatically identifies user-defined functions and variables even if your code has minor indentation or parse errors.
 - **Pine v6 Native Awareness**: Full support for namespaces like `log.`, `chart.point`, and advanced UDT constructors.
 - **Optimized for Massive Files**: The WASM-powered engine comfortably processes 10,000+ line scripts with sub-millisecond response times.
 
 ### 🧠 Intelligent Developer Features
-- **Hover Documentation**: Detailed technical reference for every built-in function, including parameter types and return values.
+- **Go to Definition**: Navigate directly to variable declarations and user-defined functions across complex scopes.
+- **Auto-Formatter**: A non-destructive formatting engine to standardize spacing around equality checks.
+- **Inlay Hints**: Parameter labels auto-populate inside function calls for ultimate readability.
 - **Advanced Diagnostics**: Catch `void` return assignment errors, argument count mismatches, and namespace misuses before you even hit "Save" on TradingView.
 - **Contextual Autocomplete**: Organized namespaces (`ta.`, `math.`, `array.`) for lightning-fast discovery.
 
@@ -44,9 +46,9 @@ Never get bogged down by thousands of false positives again. Our v1.1.2 engine h
 
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
-| **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](resources/screenshot-hover-atr.png) |
-| **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](resources/screenshot-linter-diagnostics.png) |
-| **Advanced Verification** | Catch void assignments and parameter leaks. | ![Verification](resources/screenshot-hover-ema.png) |
+| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](resources/screenshot-linter-diagnostics.png) |
+| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](resources/screenshot-hover-atr.png) |
+| **Auto-Formatter** | Non-destructive formatting for elegant, readable code blocks. | ![Formatting](resources/screenshot-hover-ema.png) |
 
 ---
 

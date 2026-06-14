@@ -25,9 +25,10 @@
 
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
-| **Real-time Diagnostics** | Catch logic errors like namespace misuse. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
-| **Hover Tooltips** | See function signatures and types instantly. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
-| **Advanced Verification** | Catch `void` assignment errors before deployment. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
+| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
+| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
+| **Real-time Diagnostics** | Catch logic errors like namespace misuse or void assignment. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
+| **Auto-Formatter** | Non-destructive formatting for elegant, readable code blocks. | ![Formatting](pine-script-extension/resources/screenshot-hover-ema.png) |
 
 ---
 
@@ -39,7 +40,7 @@
 
 ### Quick Installation (VSIX)
 The easiest way to use Pine Script Pro is to install the pre-compiled extension:
-1. Download the latest `pine-script-pro-1.1.2.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases/tag/v1.1.2).
+1. Download the latest `pine-script-pro-1.3.0.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases/tag/v1.3.0).
 2. In VS Code, run `Cmd+Shift+P` → **Extensions: Install from VSIX...**
 3. Select the file and restart VS Code.
 
