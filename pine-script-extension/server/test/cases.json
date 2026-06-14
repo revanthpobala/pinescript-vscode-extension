@@ -303,5 +303,35 @@
             "Missing required arguments for 'plotchar()'. Expected 1, found 0."
         ],
         "description": "plotchar() with no args must fire — series is the one required param. Ensures removal from RELAXED set didn't break this."
+    },
+    {
+        "name": "[TDD] Go to Definition - User Function",
+        "code": "//@version=6\nindicator('Test')\nmyFunc(int x) => x * 2\ny = myFunc(10)",
+        "expectedErrors": 0,
+        "checkDefinition": {
+            "name": "myFunc",
+            "expectedLine": 2
+        }
+    },
+    {
+        "name": "[TDD] Inlay Hints - ta.sma",
+        "code": "//@version=6\nindicator('Test')\nx = ta.sma(close, 14)",
+        "expectedErrors": 0,
+        "expectedInlayHints": ["source:", "length:"]
+    },
+    {
+        "name": "[TDD] Go to Definition - Local Variable",
+        "code": "//@version=6\nindicator('Test')\nif true\n    myLocal = 10\n    y = myLocal",
+        "expectedErrors": 0,
+        "checkDefinition": {
+            "name": "myLocal",
+            "expectedLine": 3
+        }
+    },
+    {
+        "name": "[TDD] Formatter - Safe Equality Check",
+        "code": "//@version=6\nindicator('Test')\na=b\nif a==b\n    c=d\n    e!=f\n    g>=h\n    i<=j",
+        "expectedErrors": 0,
+        "expectedFormattedCode": "//@version=6\nindicator('Test')\na = b\nif a==b\n    c = d\n    e!=f\n    g>=h\n    i<=j"
     }
 ]

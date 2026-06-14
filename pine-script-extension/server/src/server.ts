@@ -15,7 +15,12 @@ import {
     SemanticTokensBuilder,
     SemanticTokensLegend,
     SemanticTokenTypes,
-    SemanticTokenModifiers
+    SemanticTokenModifiers,
+    Location,
+    InlayHint,
+    InlayHintKind,
+    TextEdit,
+    Range
 } from 'vscode-languageserver/node';
 
 import {
@@ -104,7 +109,10 @@ connection.onInitialize(async (params: InitializeParams) => {
                 legend: legend,
                 full: true
             },
-            renameProvider: true
+            renameProvider: true,
+            definitionProvider: true,
+            inlayHintProvider: { resolveProvider: false },
+            documentFormattingProvider: true
         }
     };
     return result;
@@ -237,6 +245,79 @@ connection.onRenameRequest((params) => {
             [params.textDocument.uri]: edits
         }
     };
+});
+
+connection.onDefinition((params) => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || !parser) return null;
+
+    const text = doc.getText();
+    const tree = getCachedTree(params.textDocument.uri, text);
+    const analyzer = analyzers.get(params.textDocument.uri);
+    if (!tree || !analyzer) return null;
+
+    const root = tree.rootNode;
+    const { line, character } = params.position;
+    const node = root.descendantForPosition({ row: line, column: character });
+
+    if (node) {
+        let word = node.text;
+        if (node.parent?.type === 'member_access') {
+            word = node.parent.text;
+        }
+
+        const udf = analyzer.getFunctionDefinition(word);
+        if (udf && udf.range) {
+            return [{ uri: params.textDocument.uri, range: udf.range }];
+        }
+
+        const localDef = (analyzer as any).getDefinitionLocation(node);
+        if (localDef) {
+            return [{ uri: params.textDocument.uri, range: localDef }];
+        }
+
+        const sym = analyzer.getSymbol(word);
+        if (sym && sym.range) {
+            return [{ uri: params.textDocument.uri, range: sym.range }];
+        }
+    }
+    return null;
+});
+
+connection.languages.inlayHint.on((params) => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || !parser) return null;
+
+    const text = doc.getText();
+    const tree = getCachedTree(params.textDocument.uri, text);
+    const analyzer = analyzers.get(params.textDocument.uri);
+    if (!tree || !analyzer) return null;
+
+    if (typeof (analyzer as any).getInlayHints !== 'function') return [];
+    
+    const hints = (analyzer as any).getInlayHints(tree.rootNode as any, params.range);
+    return hints.map((h: any) => {
+        return {
+            position: h.position,
+            label: h.label,
+            kind: InlayHintKind.Parameter,
+            paddingRight: true
+        } as InlayHint;
+    });
+});
+
+connection.onDocumentFormatting((params) => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc) return null;
+
+    const text = doc.getText();
+    const analyzer = analyzers.get(params.textDocument.uri);
+    if (!analyzer) return null;
+
+    if (typeof (analyzer as any).formatDocument !== 'function') return null;
+
+    const edits = (analyzer as any).formatDocument(text);
+    return edits as TextEdit[];
 });
 
 connection.onCompletion((params) => {
