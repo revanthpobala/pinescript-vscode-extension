@@ -391,5 +391,23 @@
         "code": "//@version=6\nindicator('Test')\n// 10% = grinding trend\nx = 1",
         "expectedErrors": 0,
         "description": "Checks that the spaced operator validator ignores comments (e.g. '10% =' being mistaken for a malformed '%=')."
+    },
+    {
+        "name": "Malformed function declaration with arguments (= >)",
+        "code": "//@version=6\nindicator('Test')\nzf(src, len) = >\n    src + len",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Invalid operator space, did you mean '=>'?"
+        ],
+        "description": "Checks that the static checker catches spaced => for functions with arguments, avoiding the generic 'Cannot assign to a function call' error."
+    },
+    {
+        "name": "Malformed function declaration with no arguments (= >)",
+        "code": "//@version=6\nindicator('Test')\nf15() = >\n    close",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Invalid operator space, did you mean '=>'?"
+        ],
+        "description": "Checks that the static checker catches spaced => for functions with no arguments, avoiding the generic 'Cannot assign to a function call' error."
     }
 ]
