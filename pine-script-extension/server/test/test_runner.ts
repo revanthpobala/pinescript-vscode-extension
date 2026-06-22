@@ -50,7 +50,10 @@ async function runTests() {
         if (testCase.errorMessages) {
             let messagesFound = true;
             for (const expectedMsg of testCase.errorMessages) {
-                const found = diagnostics.some(d => d.message.includes(expectedMsg));
+                const found = diagnostics.some(d => {
+                    const msg = typeof d.message === 'string' ? d.message : d.message.value;
+                    return msg.includes(expectedMsg);
+                });
                 if (!found) {
                     console.log(`❌ Failed: Could not find expected message: "${expectedMsg}"`);
                     messagesFound = false;

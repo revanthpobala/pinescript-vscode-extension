@@ -1,13 +1,10 @@
 # Pine Script Pro
 
 <p align="center">
-  <img src="resources/icon.png" width="128" />
+  <img src="https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/icon.png" width="128" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981&label=VS%20Code" alt="VS Code Marketplace Version" />
-  <img src="https://img.shields.io/visual-studio-marketplace/i/revanthpobala.pine-script-pro?style=for-the-badge&color=007acc" alt="VS Code Installs" />
-  <br/>
   <img src="https://img.shields.io/open-vsx/v/revanthpobala/pine-script-pro?style=for-the-badge&color=purple&label=Open%20VSX" alt="Open VSX Version" />
   <img src="https://img.shields.io/open-vsx/dt/revanthpobala/pine-script-pro?style=for-the-badge&color=purple" alt="Open VSX Downloads" />
   <br/>
@@ -23,7 +20,7 @@
 Unlike generic syntax highlighters, **Pine Script Pro** understands the execution model of Pine Script. Our custom-built analyzer is designed to handle complex indicators, massive libraries, and the latest v6 syntax with near-zero latency.
 
 ### 🛡️ Ultra-Resilient Linter (Battle-Tested for Production)
-Never get bogged down by thousands of false positives again. Our v1.3.0 engine has been successfully verified against real-world production scripts spanning 200,000+ lines.
+Never get bogged down by thousands of false positives again. Our latest engine has been successfully verified against real-world production scripts spanning 200,000+ lines.
 - **Zero False-Positive Goal**: Specialized handling for dual-use built-ins (`alert`, `plot`, `box`) and flexible argument signatures (`nz`, `fill`, `log.*`).
 - **Greedy Symbol Scrapper**: Automatically identifies user-defined functions and variables even if your code has minor indentation or parse errors.
 - **Pine v6 Native Awareness**: Full support for namespaces like `log.`, `chart.point`, and advanced UDT constructors.
@@ -31,7 +28,7 @@ Never get bogged down by thousands of false positives again. Our v1.3.0 engine h
 
 ### 🧠 Intelligent Developer Features
 - **Go to Definition**: Navigate directly to variable declarations and user-defined functions across complex scopes.
-- **Auto-Formatter**: A non-destructive formatting engine to standardize spacing around equality checks.
+- **Auto-Formatter**: A "Silent Healer" formatting engine that automatically collapses malformed operators without destroying your custom vertical alignment or spacing.
 - **Inlay Hints**: Parameter labels auto-populate inside function calls for ultimate readability.
 - **Advanced Diagnostics**: Catch `void` return assignment errors, argument count mismatches, and namespace misuses before you even hit "Save" on TradingView.
 - **Contextual Autocomplete**: Organized namespaces (`ta.`, `math.`, `array.`) for lightning-fast discovery.
@@ -46,9 +43,9 @@ Never get bogged down by thousands of false positives again. Our v1.3.0 engine h
 
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
-| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](resources/screenshot-linter-diagnostics.png) |
-| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](resources/screenshot-hover-atr.png) |
-| **Auto-Formatter** | Non-destructive formatting for elegant, readable code blocks. | ![Formatting](resources/screenshot-hover-ema.png) |
+| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-linter-diagnostics.png) |
+| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-atr.png) |
+| **Auto-Formatter** | A "Silent Healer" formatting engine that automatically collapses malformed operators without destroying your custom vertical alignment or spacing. | ![Formatting](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-ema.png) |
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "pine-script-extension-server",
-  "description": "Pine Script v6 Language Server",
-  "version": "1.3.0",
+  "description": "Language Server for Pine Script",
+  "version": "1.3.1",
   "author": "Revanth Pobala",
   "main": "./out/server.js",
   "scripts": {
@@ -15,9 +15,9 @@
     "web-tree-sitter": "^0.26.9"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.4",
-    "vscode-languageserver": "^9.0.1",
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.3",
+    "vscode-languageserver": "^10.0.0",
     "vscode-languageserver-textdocument": "^1.0.12"
   }
 }

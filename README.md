@@ -1,104 +1,82 @@
 # Pine Script Pro
 
 <p align="center">
-  <img src="pine-script-extension/resources/icon.png" width="128" />
+  <img src="https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/icon.png" width="128" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/visual-studio-marketplace/v/revanthpobala.pine-script-pro?style=for-the-badge&color=089981&label=VS%20Code" alt="VS Code Marketplace Version" />
-  <img src="https://img.shields.io/visual-studio-marketplace/i/revanthpobala.pine-script-pro?style=for-the-badge&color=007acc" alt="VS Code Installs" />
-  <br/>
   <img src="https://img.shields.io/open-vsx/v/revanthpobala/pine-script-pro?style=for-the-badge&color=purple&label=Open%20VSX" alt="Open VSX Version" />
   <img src="https://img.shields.io/open-vsx/dt/revanthpobala/pine-script-pro?style=for-the-badge&color=purple" alt="Open VSX Downloads" />
   <br/>
   <img src="https://img.shields.io/badge/License-Modified%20MIT-orange?style=for-the-badge" alt="License" />
 </p>
 
-<p align="center">
-  <strong>High-performance VS Code extension for TradingView developers.</strong><br>
-  Industrial-strength static analysis, intelligent type checking, and ultra-resilient parsing for Pine Script v6.
-</p>
+**Pine Script Pro** is a high-performance, professional-grade VS Code extension for TradingView developers. It bridges the gap between script writing and professional software development by providing industrial-strength static analysis, intelligent type Checking, and an ultra-resilient engine optimized for Pine Script v6.
 
 ---
 
-## ✨ Features at a Glance
+## 🚀 Why Pine Script Pro?
+
+Unlike generic syntax highlighters, **Pine Script Pro** understands the execution model of Pine Script. Our custom-built analyzer is designed to handle complex indicators, massive libraries, and the latest v6 syntax with near-zero latency.
+
+### 🛡️ Ultra-Resilient Linter (Battle-Tested for Production)
+Never get bogged down by thousands of false positives again. Our latest engine has been successfully verified against real-world production scripts spanning 200,000+ lines.
+- **Zero False-Positive Goal**: Specialized handling for dual-use built-ins (`alert`, `plot`, `box`) and flexible argument signatures (`nz`, `fill`, `log.*`).
+- **Greedy Symbol Scrapper**: Automatically identifies user-defined functions and variables even if your code has minor indentation or parse errors.
+- **Pine v6 Native Awareness**: Full support for namespaces like `log.`, `chart.point`, and advanced UDT constructors.
+- **Optimized for Massive Files**: The WASM-powered engine comfortably processes 10,000+ line scripts with sub-millisecond response times.
+
+### 🧠 Intelligent Developer Features
+- **Go to Definition**: Navigate directly to variable declarations and user-defined functions across complex scopes.
+- **Auto-Formatter**: A "Silent Healer" formatting engine that automatically collapses malformed operators without destroying your custom vertical alignment or spacing.
+- **Inlay Hints**: Parameter labels auto-populate inside function calls for ultimate readability.
+- **Advanced Diagnostics**: Catch `void` return assignment errors, argument count mismatches, and namespace misuses before you even hit "Save" on TradingView.
+- **Contextual Autocomplete**: Organized namespaces (`ta.`, `math.`, `array.`) for lightning-fast discovery.
+
+### ⚡ Blazing Performance
+- **WASM Powered**: Core parser runs on WebAssembly for sub-millisecond AST generation.
+- **Zero-Dependency Core**: Bundled with `esbuild`, keeping the extension lightweight and fast.
+
+---
+
+## 🎨 Professional Visuals
 
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
-| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](pine-script-extension/resources/screenshot-linter-diagnostics.png) |
-| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](pine-script-extension/resources/screenshot-hover-atr.png) |
-| **Real-time Diagnostics** | Catch logic errors like namespace misuse or void assignment. | ![Verification](pine-script-extension/resources/screenshot-hover-ema.png) |
-| **Auto-Formatter** | Non-destructive formatting for elegant, readable code blocks. | ![Formatting](pine-script-extension/resources/screenshot-hover-ema.png) |
+| **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-linter-diagnostics.png) |
+| **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-atr.png) |
+| **Auto-Formatter** | A "Silent Healer" formatting engine that automatically collapses malformed operators without destroying your custom vertical alignment or spacing. | ![Formatting](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-ema.png) |
 
 ---
 
-## 🚀 Getting Started
+## 📩 Support & Feedback
 
-### Prerequisites
-- **Node.js**: v18.0.0 or higher.
-- **npm**: v9.0.0 or higher.
-
-### Quick Installation (VSIX)
-The easiest way to use Pine Script Pro is to install the pre-compiled extension:
-1. Download the latest `pine-script-pro-1.3.0.vsix` from [Releases](https://github.com/revanthpobala/pinescript-vscode-extension/releases/tag/v1.3.0).
-2. In VS Code, run `Cmd+Shift+P` → **Extensions: Install from VSIX...**
-3. Select the file and restart VS Code.
-
-### Building from Source
-If you want to contribute or build the extension yourself:
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/revanthpobala/pinescript-vscode-extension.git
-cd pinescript-vscode-extension/pine-script-extension
-
-# 2. Install dependencies (Top-level, Client, and Server)
-npm run postinstall
-
-# 3. Build the Extension
-# This compiles TypeScript and bundles everything with esbuild
-npm run bundle
-
-# 4. Package as VSIX
-npx vsce package
-```
+If you encounter a bug, have a feature request, or want to suggest an optimization, please use our [GitHub Issue Tracker](https://github.com/revanthpobala/pinescript-vscode-extension/issues). 
 
 ---
 
-## 🛠 Developer Guide
+## 🤝 Open Source & Contribution
 
-### Running Quality Tests
-The project includes a dedicated test suite for verifying linter logic and type inference.
-
-```bash
-cd pine-script-extension/server
-npm run build
-node out/test/test_runner.js
-```
-*Note: New test cases should be added to `pine-script-extension/server/test/cases.json`.*
-
-### Updating Built-in Metadata
-To update function signatures or return types in the linter:
-1. Edit `pine-script-extension/server/scripts/update_core_params.js`.
-2. Run the script:
-   ```bash
-   cd pine-script-extension/server/scripts
-   node update_core_params.js
-   ```
-
-### Regenerating the Parser (Tree-Sitter)
-If you modify the grammar:
-```bash
-cd tree-sitter-pinescript
-npx tree-sitter build --wasm
-cp tree-sitter-pinescript.wasm ../pine-script-extension/server/wasm/
-```
+This extension is part of a larger project dedicated to modernizing Pine Script development.
+- **Source Code**: [GitHub Repository](https://github.com/revanthpobala/pinescript-vscode-extension)
+- **Grammar Source**: [Tree-sitter Pinescript](https://github.com/revanthpobala/pinescript-vscode-extension/tree/main/tree-sitter-pinescript)
+- **Author**: [Revanth Pobala](https://github.com/revanthpobala)
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Disclaimer & Risk Warning
 
-**NOT FINANCIAL ADVICE**. This software is for development purposes only. The author (**Revanth Pobala**) is not responsible for any financial losses. Use at your own risk.
+**NOT FINANCIAL ADVICE**. **Pine Script Pro** is a static analysis tool designed for development and educational purposes only. It is intended to assist in the identification of syntax and logical errors. 
 
-## ⚖️ License
-This project is licensed under a modified MIT License. **Mandatory attribution to Revanth Pobala is required** for any usage of the code (including single lines or snippets). See [LICENSE.txt](LICENSE.txt) for full details.
+- **No Liability**: The author (**Revanth Pobala**) is not responsible for any financial or monetary losses resulting from the use of this software, its suggestions, or any indicators developed using this tool. 
+- **Verification Required**: Trading logic should always be manually verified and backtested on TradingView before deployment. 
+- **"As Is"**: This software is provided "as is" without warranty of any kind. Use at your own risk.
+
+---
+
+## 📜 Requirements
+- **VS Code**: 1.75.0 or higher.
+- **Language**: Pine Script v6 (optimized), compatible with v3, v4, and v5.
+
+---
+**License**: Modified MIT. **Mandatory attribution to Revanth Pobala is required** for any usage of the code (including single lines). See root [LICENSE.txt](../LICENSE.txt) for the full legal text and disclaimer.

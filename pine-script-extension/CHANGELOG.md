@@ -1,5 +1,11 @@
 # Changelog
  
+## [1.3.1] - 2026-06-21
+### Fixed
+- **Malformed Operator Detection:** The static analyzer now perfectly catches and flags all improperly spaced multi-character operators (e.g. `+ =`, `= =`, `= >`, `>=`) with explicit error messages instead of cascading AST failures.
+- **"No Noise" Policy Edge Cases:** Fixed false positives where the static analyzer mistakenly threw malformed operator or unused variable diagnostics on code written inside `// line comments` or `/* block comments */`.
+- **Non-Intrusive Formatter Update:** Overhauled the auto-formatter to act as a "Silent Healer." It no longer aggressively forces spaces around assignment operators or breaks custom vertical alignment. It now strictly focuses on collapsing malformed compound operators (`+ =` -> `+=`) and function declaration operators (`= >` -> `=>`) without touching your preferred spacing.
+
 ## [1.3.0] - 2026-06-13
 ### Added
 - **Go to Definition**: Navigate directly to variable declarations and user-defined functions by using `Cmd+Click` (`F12`). Accurately respects lexical block-scoping.

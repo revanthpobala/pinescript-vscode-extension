@@ -332,6 +332,64 @@
         "name": "[TDD] Formatter - Safe Equality Check",
         "code": "//@version=6\nindicator('Test')\na=b\nif a==b\n    c=d\n    e!=f\n    g>=h\n    i<=j",
         "expectedErrors": 0,
-        "expectedFormattedCode": "//@version=6\nindicator('Test')\na = b\nif a==b\n    c = d\n    e!=f\n    g>=h\n    i<=j"
+        "expectedFormattedCode": "//@version=6\nindicator('Test')\na=b\nif a==b\n    c=d\n    e!=f\n    g>=h\n    i<=j"
+    },
+    {
+        "name": "[TDD] Formatter - Compound Assignments",
+        "code": "//@version=6\nindicator('Test')\na += 1\nb -= 1\nc *= 1\nd /= 1\ne + = 1\nf - = 1",
+        "expectedErrors": 2,
+        "expectedFormattedCode": "//@version=6\nindicator('Test')\na += 1\nb -= 1\nc *= 1\nd /= 1\ne += 1\nf -= 1",
+        "description": "Formatter should format compound assignments correctly and fix malformed compound operators."
+    },
+    {
+        "name": "[TDD] Formatter - Relational and Other Operators",
+        "code": "//@version=6\nindicator('Test')\na= =b\nc! =d\ne> =f\ng< =h\ni: =j\nk% =l",
+        "expectedErrors": 6,
+        "expectedFormattedCode": "//@version=6\nindicator('Test')\na==b\nc!=d\ne>=f\ng<=h\ni:=j\nk%=l",
+        "description": "Formatter should format relational and assignment operators correctly and fix their malformed spaced versions."
+    },
+    {
+        "name": "Malformed function declaration operator (= >)",
+        "code": "//@version=6\nindicator('Test')\nmyFunc() = > 1\nx = myFunc()",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Invalid operator space, did you mean '=>'?"
+        ],
+        "description": "True positive (syntax error), but AST sees = as an assignment. The error message is confusing to the user who meant =>."
+    },
+    {
+        "name": "Malformed compound assignment operator (+ =)",
+        "code": "//@version=6\nindicator('Test')\nvar n15 = 0\nn15 + = 1",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Invalid operator space, did you mean '+='?"
+        ],
+        "description": "True positive (syntax error) for malformed compound assignment operator. Throws syntax error at input '='."
+    },
+    {
+        "name": "Malformed relational operators (= =, ! =, > =, < =, : =, % =)",
+        "code": "//@version=6\nindicator('Test')\nif a = = b\n    x = 1\nif c ! = d\n    x = 2\nif e > = f\n    x = 3\nif g < = h\n    x = 4\ni : = j\nk % = l",
+        "expectedErrors": 6,
+        "errorMessages": [
+            "Invalid operator space, did you mean '=='?",
+            "Invalid operator space, did you mean '!='?",
+            "Invalid operator space, did you mean '>='?",
+            "Invalid operator space, did you mean '<='?",
+            "Invalid operator space, did you mean ':='?",
+            "Invalid operator space, did you mean '%='?"
+        ],
+        "description": "Checks that the static checker properly catches spaced operators and emits the correct helpful message."
+    },
+    {
+        "name": "False Positive: '/=' inside line comment",
+        "code": "//@version=6\nindicator('Test')\n// ===================\n// = a fake breakout\nx = 1",
+        "expectedErrors": 0,
+        "description": "Checks that the spaced operator validator ignores comments (e.g. '// =' being mistaken for a malformed '/=')."
+    },
+    {
+        "name": "False Positive: '%=' inside line comment",
+        "code": "//@version=6\nindicator('Test')\n// 10% = grinding trend\nx = 1",
+        "expectedErrors": 0,
+        "description": "Checks that the spaced operator validator ignores comments (e.g. '10% =' being mistaken for a malformed '%=')."
     }
 ]

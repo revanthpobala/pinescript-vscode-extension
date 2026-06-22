@@ -358,7 +358,12 @@ export class Analyzer {
             if (line.includes("'") || line.includes('"') || line.trim().startsWith('//')) continue;
             
             const oldLine = line;
-            let newLine = line.replace(/(?<![=<>!])\s*(=|:=)\s*(?![=])/g, ' $1 ');
+            let newLine = line;
+            // 1. Silent Healer: Collapse malformed compound/relational operators (e.g., '+ =', '! =', '= =')
+            newLine = newLine.replace(/([+\-*/%!=<>:])\s+=/g, '$1=');
+            // 2. Silent Healer: Collapse malformed function declaration operator (e.g., '= >')
+            newLine = newLine.replace(/=\s+>/g, '=>');
+            // 3. Spacing: Add space after comma if missing
             newLine = newLine.replace(/,(?=[^\s])/g, ', ');
             
             if (newLine !== oldLine) {
@@ -544,9 +549,64 @@ export class Analyzer {
         this.initializeBuiltIns(); // Re-populate standard library symbols
         this.sourceCode = rootNode.text; // Store source for text-based checks
 
+        // NO NOISE POLICY Exception: Scan raw text for malformed multi-character operators
+        // These often cause Tree-sitter to fracture badly or misidentify tokens.
+        const malformedOps = [
+            { regex: /=\s+>/g, message: "Invalid operator space, did you mean '=>'?" },
+            { regex: /\+\s+=/g, message: "Invalid operator space, did you mean '+='?" },
+            { regex: /-\s+=/g, message: "Invalid operator space, did you mean '-='?" },
+            { regex: /\*\s+=/g, message: "Invalid operator space, did you mean '*='?" },
+            { regex: /\/\s+=/g, message: "Invalid operator space, did you mean '/='?" },
+            { regex: /%\s+=/g, message: "Invalid operator space, did you mean '%='?" },
+            { regex: /=\s+=/g, message: "Invalid operator space, did you mean '=='?" },
+            { regex: /!\s+=/g, message: "Invalid operator space, did you mean '!='?" },
+            { regex: />\s+=/g, message: "Invalid operator space, did you mean '>='?" },
+            { regex: /<\s+=/g, message: "Invalid operator space, did you mean '<='?" },
+            { regex: /:\s+=/g, message: "Invalid operator space, did you mean ':='?" }
+        ];
+
+        for (const op of malformedOps) {
+            let match;
+            while ((match = op.regex.exec(this.sourceCode)) !== null) {
+                const linesBeforeMatch = this.sourceCode.substring(0, match.index).split('\n');
+                const lineNumber = linesBeforeMatch.length - 1;
+                const startCol = match.index - this.sourceCode.lastIndexOf('\n', match.index - 1) - 1;
+
+                // FALSE POSITIVE PREVENTION: Check if match is inside a comment or string
+                const nodeAtMatch = this.findNodeAt(rootNode, {
+                    line: lineNumber,
+                    character: startCol
+                });
+                
+                let isInsideCommentOrString = false;
+                let curr: typeof nodeAtMatch | null = nodeAtMatch;
+                while (curr) {
+                    if (curr.type === 'comment' || curr.type === 'string' || curr.type === 'string_literal') {
+                        isInsideCommentOrString = true;
+                        break;
+                    }
+                    curr = curr.parent;
+                }
+                
+                if (isInsideCommentOrString) {
+                    continue;
+                }
+
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: {
+                        start: { line: lineNumber, character: startCol },
+                        end: { line: lineNumber, character: startCol + match[0].length }
+                    },
+                    message: op.message,
+                    source: 'Pine Script'
+                });
+            }
+        }
+
         // Pass 0: Greedy Text Scan for Function and Variable Definitions
         // Catch definitions that Tree-sitter fractures (e.g. matrix<int> m = ...)
-        const functionDefRegex = /^([a-zA-Z_]\w*)\s*\([\s\S]*?\)\s*=>/gm;
+        const functionDefRegex = /^([a-zA-Z_]\w*)\s*\([^)]*?\)\s*=\s*>?/gm;
         let match;
         while ((match = functionDefRegex.exec(this.sourceCode)) !== null) {
             const funcName = match[1];
@@ -728,9 +788,29 @@ export class Analyzer {
 
         // Pass 3: Simple text-based unused variable check for global `var [type] name = ...` declarations
         // This avoids false positives from complex scoping by doing a simple grep-style search
-        this.checkUnusedVarDeclarations(rootNode.text, diagnostics);
+        this.checkUnusedVarDeclarations(rootNode, rootNode.text, diagnostics);
 
-        return diagnostics;
+        // NO NOISE POLICY: If a line has a raw text syntax error (like malformed operator),
+        // suppress all other AST-based diagnostics on that line to avoid confusing the user.
+        const malformedLines = new Set<number>();
+        const finalDiagnostics: Diagnostic[] = [];
+
+        for (const diag of diagnostics) {
+            const msg = typeof diag.message === 'string' ? diag.message : diag.message.value;
+            if (msg.startsWith('Invalid operator space')) {
+                malformedLines.add(diag.range.start.line);
+            }
+        }
+
+        for (const diag of diagnostics) {
+            const msg = typeof diag.message === 'string' ? diag.message : diag.message.value;
+            if (malformedLines.has(diag.range.start.line) && !msg.startsWith('Invalid operator space')) {
+                continue; // Suppress AST noise
+            }
+            finalDiagnostics.push(diag);
+        }
+
+        return finalDiagnostics;
     }
 
     private visit(node: SyntaxNode, diagnostics: Diagnostic[]) {
@@ -812,7 +892,7 @@ export class Analyzer {
      * Finds `var [type] name = ...` patterns at line start (global scope).
      * If the variable name only appears once (the declaration), it's unused.
      */
-    private checkUnusedVarDeclarations(sourceCode: string, diagnostics: Diagnostic[]) {
+    private checkUnusedVarDeclarations(rootNode: SyntaxNode, sourceCode: string, diagnostics: Diagnostic[]) {
         // Match: var [optional_type] name = ... at the start of a line
         // Examples: var bool showFib = false
         //           var float myVar = 0.0
@@ -830,6 +910,31 @@ export class Analyzer {
             // Skip common false positives
             if (varName.startsWith('_')) continue; // Convention for intentionally unused
             if (typeName === 'var' || typeName === 'varip') continue; // Malformed match
+
+            // Find the line number for proper range
+            const declPos = match.index;
+            const linesBeforeDecl = sourceCode.substring(0, declPos).split('\n');
+            const lineNumber = linesBeforeDecl.length - 1; // 0-indexed
+            const lineText = lines[lineNumber] || '';
+            const startCol = lineText.indexOf(varName);
+
+            // FALSE POSITIVE PREVENTION: Check if match is inside a comment or string
+            const nodeAtMatch = this.findNodeAt(rootNode, {
+                line: lineNumber,
+                character: Math.max(0, startCol)
+            });
+            
+            let isInsideCommentOrString = false;
+            let curr: SyntaxNode | null = nodeAtMatch;
+            while (curr) {
+                if (curr.type === 'comment' || curr.type === 'string' || curr.type === 'string_literal') {
+                    isInsideCommentOrString = true;
+                    break;
+                }
+                curr = curr.parent;
+            }
+            
+            if (isInsideCommentOrString) continue;
 
             // Count occurrences of the variable name in the source (word boundary match)
             const usagePattern = new RegExp(`\\b${varName}\\b`, 'g');
