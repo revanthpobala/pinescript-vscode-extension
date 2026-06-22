@@ -7,7 +7,6 @@
       ],
       "include_dirs": [
         "src",
-        "<!(node -e \"console.log(require('path').relative('.', require('path').dirname(require.resolve('tree-sitter/package.json'))))\")/vendor/tree-sitter/lib/include",
         "<!(node -e \"require('nan')\")"
       ],
       "sources": [
