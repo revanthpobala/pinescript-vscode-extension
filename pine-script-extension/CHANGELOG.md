@@ -1,5 +1,9 @@
 # Changelog
- 
+
+## [1.4.0] - 2026-07-14
+### Added
+- **Inputs Preview**: Click on the pine script pro icon in the status bar to preview the inputs of the current script.
+
 ## [1.3.1] - 2026-06-21
 ### Fixed
 - **Malformed Operator Detection:** The static analyzer now perfectly catches and flags all improperly spaced multi-character operators (e.g. `+ =`, `= =`, `= >`, `>=`) with explicit error messages instead of cascading AST failures.

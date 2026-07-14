@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <!-- Pine tree — matches the Pine Script / TradingView logo mark -->
+  <!-- Trunk -->
+  <rect x="10.5" y="18" width="3" height="3.5" rx="0.5"/>
+  <!-- Bottom tier (widest) -->
+  <polygon points="12,9 5,18 19,18"/>
+  <!-- Middle tier -->
+  <polygon points="12,5 6.5,13.5 17.5,13.5"/>
+  <!-- Top tier (tip) -->
+  <polygon points="12,1.5 8.5,9 15.5,9"/>
+</svg>

@@ -32,6 +32,7 @@ Never get bogged down by thousands of false positives again. Our latest engine h
 - **Inlay Hints**: Parameter labels auto-populate inside function calls for ultimate readability.
 - **Advanced Diagnostics**: Catch `void` return assignment errors, argument count mismatches, and namespace misuses before you even hit "Save" on TradingView.
 - **Contextual Autocomplete**: Organized namespaces (`ta.`, `math.`, `array.`) for lightning-fast discovery.
+- **Inputs Preview**: Click on the pine script pro icon in the status bar to preview the inputs of the current script.
 
 ### ⚡ Blazing Performance
 - **WASM Powered**: Core parser runs on WebAssembly for sub-millisecond AST generation.
@@ -46,6 +47,7 @@ Never get bogged down by thousands of false positives again. Our latest engine h
 | **Go to Definition** | `Cmd+Click` variables to instantly jump to declarations. | ![Diagnostics](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-linter-diagnostics.png) |
 | **Inline Parameters** | Auto-inlay hints (`source:`, `length:`) appear naturally. | ![Hover ATR](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-atr.png) |
 | **Auto-Formatter** | A "Silent Healer" formatting engine that automatically collapses malformed operators without destroying your custom vertical alignment or spacing. | ![Formatting](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/screenshot-hover-ema.png) |
+| **Inputs Preview** | Click on the pine script pro icon in the status bar to preview the inputs of the current script. | ![Inputs Preview](https://raw.githubusercontent.com/revanthpobala/pinescript-vscode-extension/main/pine-script-extension/resources/input-preview.png) |
 
 ---
 
