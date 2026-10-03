@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.1] - 2026-10-03
+### Changed
+- **Dependency Upgrades & Infrastructure:** Upgraded all workspace dependencies across client, server, extension root, and tree-sitter modules.
+- **Parser & Runtime Modernization:** Rebuilt tree-sitter WebAssembly grammar and updated TypeScript DOM definitions for latest environments.
+- **CI / CD Enhancements:** Added manual dispatch triggers and automated VSIX artifact capture in GitHub Actions release workflows.
+
 ## [1.4.0] - 2026-07-14
 ### Added
 - **Inputs Preview**: Click on the pine script pro icon in the status bar to preview the inputs of the current script.
