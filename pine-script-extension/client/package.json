@@ -13,11 +13,11 @@
     "watch": "tsc -b -w"
   },
   "dependencies": {
-    "vscode-languageclient": "^10.0.0"
+    "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
-    "@types/vscode": "^1.125.0",
-    "typescript": "^6.0.3"
+    "@types/node": "^26.6.4",
+    "@types/vscode": "^1.140.0",
+    "typescript": "^7.0.2"
   }
 }

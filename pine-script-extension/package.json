@@ -114,9 +114,9 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
-    "esbuild": "^0.28.1",
-    "fs-extra": "^11.3.5",
-    "typescript": "^6.0.3"
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "fs-extra": "^11.4.1",
+    "typescript": "^7.0.2"
   }
 }

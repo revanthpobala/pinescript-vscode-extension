@@ -22,7 +22,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "node-addon-api": "^8.8.0",
+    "node-addon-api": "^8.9.2",
     "node-gyp-build": "^4.8.4"
   },
   "peerDependencies": {
@@ -34,9 +34,9 @@
     }
   },
   "devDependencies": {
-    "nan": "^2.27.0",
+    "nan": "^2.29.0",
     "prebuildify": "^6.0.1",
-    "tree-sitter-cli": "^0.26.9"
+    "tree-sitter-cli": "^0.27.0"
   },
   "tree-sitter": [
     {
