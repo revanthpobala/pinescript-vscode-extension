@@ -894,9 +894,6 @@ export class Analyzer {
      */
     private checkUnusedVarDeclarations(rootNode: SyntaxNode, sourceCode: string, diagnostics: Diagnostic[]) {
         // Match: var [optional_type] name = ... at the start of a line
-        // Examples: var bool showFib = false
-        //           var float myVar = 0.0
-        //           var line lEntry = line.new(...)
         const varDeclPattern = /^(var(?:ip)?)\s+(\w+)\s+(\w+)\s*=/gm;
 
         const lines = sourceCode.split('\n');
