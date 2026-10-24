@@ -26,6 +26,18 @@ async function runTests() {
 
     for (const testCase of testCases) {
         console.log(`\nTesting: ${testCase.name}`);
+
+        if (testCase.libraryCode) {
+            const lib = Analyzer.parseLibrary(testCase.libraryCode, 'file:///lib.pine');
+            if (lib) {
+                const libMap = new Map();
+                libMap.set(lib.name, lib);
+                analyzer.setLibraries(libMap);
+            }
+        } else {
+            analyzer.setLibraries(new Map());
+        }
+
         const tree = parser.parse(testCase.code);
         if (!tree) {
             console.log('❌ Failed: Parser returned null tree');
@@ -37,21 +49,27 @@ async function runTests() {
         const diagnostics = analyzer.analyze(rootNode);
 
         const errorCount = diagnostics.filter(d => d.severity === 1).length;
+        const warningCount = diagnostics.filter(d => d.severity === 2).length;
 
-        if (errorCount === testCase.expectedErrors) {
-            console.log('✅ Passed');
-            passed++;
-        } else {
+        let caseFailed = false;
+
+        if (errorCount !== testCase.expectedErrors) {
             console.log(`❌ Failed: Expected ${testCase.expectedErrors} errors, found ${errorCount}`);
             diagnostics.forEach(d => console.log(`   - [${d.severity}] ${d.message}`));
-            failed++;
+            caseFailed = true;
+        }
+
+        if (testCase.expectedWarnings !== undefined && warningCount !== testCase.expectedWarnings) {
+            console.log(`❌ Failed: Expected ${testCase.expectedWarnings} warnings, found ${warningCount}`);
+            diagnostics.forEach(d => console.log(`   - [${d.severity}] ${d.message}`));
+            caseFailed = true;
         }
 
         if (testCase.errorMessages) {
             let messagesFound = true;
             for (const expectedMsg of testCase.errorMessages) {
                 const found = diagnostics.some(d => {
-                    const msg = typeof d.message === 'string' ? d.message : d.message.value;
+                    const msg = typeof d.message === 'string' ? d.message : (d.message as any).value || '';
                     return msg.includes(expectedMsg);
                 });
                 if (!found) {
@@ -59,13 +77,34 @@ async function runTests() {
                     messagesFound = false;
                 }
             }
-            if (!messagesFound && errorCount === testCase.expectedErrors) {
-                // We previously said "Passed" because the count matched, but now we must fail it
-                console.log(`❌ Failed (Message mismatch)`);
-                passed--;
-                failed++;
-                continue;
+            if (!messagesFound) {
+                caseFailed = true;
             }
+        }
+
+        if (testCase.expectedCodeActions) {
+            const actions = analyzer.getCodeActions(
+                testCase.code,
+                'file:///test.pine',
+                { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
+                diagnostics
+            );
+            for (const expectedAction of testCase.expectedCodeActions) {
+                const found = actions.some((a: any) => a.title.includes(expectedAction));
+                if (!found) {
+                    console.log(`❌ Failed: Could not find expected code action: "${expectedAction}"`);
+                    console.log(`   Found actions: [${actions.map((a: any) => a.title).join(', ')}]`);
+                    caseFailed = true;
+                }
+            }
+        }
+
+        if (caseFailed) {
+            failed++;
+            continue;
+        } else {
+            console.log('✅ Passed');
+            passed++;
         }
 
         // Definition Check (TDD)

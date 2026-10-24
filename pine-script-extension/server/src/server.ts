@@ -20,7 +20,10 @@ import {
     InlayHint,
     InlayHintKind,
     TextEdit,
-    Range
+    Range,
+    CodeAction,
+    CodeActionKind,
+    CodeActionParams
 } from 'vscode-languageserver/node';
 
 import {
@@ -28,9 +31,11 @@ import {
 } from 'vscode-languageserver-textdocument';
 
 import * as path from 'path';
+import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import { Parser, Language } from 'web-tree-sitter';
 
-import { Analyzer } from './analyzer';
+import { Analyzer, LibraryInfo } from './analyzer';
 
 declare global {
     interface EmscriptenModule { }
@@ -48,6 +53,58 @@ let PineScriptLang: Language | null = null;
 // Keep track of analyzers and trees per document
 const analyzers = new Map<string, Analyzer>();
 const treeCache = new Map<string, any>();
+const workspaceLibraries = new Map<string, LibraryInfo>();
+
+function indexPineContent(uri: string, content: string) {
+    if (content.includes('library(')) {
+        const lib = Analyzer.parseLibrary(content, uri);
+        if (lib) {
+            // Remove previous library entry if renamed
+            for (const [key, existing] of workspaceLibraries.entries()) {
+                if (existing.uri === uri && key !== lib.name) {
+                    workspaceLibraries.delete(key);
+                }
+            }
+            workspaceLibraries.set(lib.name, lib);
+            for (const analyzer of analyzers.values()) {
+                analyzer.setLibraries(workspaceLibraries);
+            }
+        }
+    } else {
+        // If file was previously a library but is no longer one, purge it
+        let removed = false;
+        for (const [key, existing] of workspaceLibraries.entries()) {
+            if (existing.uri === uri) {
+                workspaceLibraries.delete(key);
+                removed = true;
+            }
+        }
+        if (removed) {
+            for (const analyzer of analyzers.values()) {
+                analyzer.setLibraries(workspaceLibraries);
+            }
+        }
+    }
+}
+
+function scanDirectory(dirPath: string) {
+    try {
+        if (!fs.existsSync(dirPath)) return;
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'out') continue;
+            const fullPath = path.join(dirPath, entry.name);
+            if (entry.isDirectory()) {
+                scanDirectory(fullPath);
+            } else if (entry.isFile() && entry.name.endsWith('.pine')) {
+                try {
+                    const text = fs.readFileSync(fullPath, 'utf8');
+                    indexPineContent(`file://${fullPath}`, text);
+                } catch { }
+            }
+        }
+    } catch { }
+}
 
 async function initParser() {
     try {
@@ -112,16 +169,27 @@ connection.onInitialize(async (params: InitializeParams) => {
             renameProvider: true,
             definitionProvider: true,
             inlayHintProvider: { resolveProvider: false },
-            documentFormattingProvider: true
+            documentFormattingProvider: true,
+            codeActionProvider: true
         }
     };
     return result;
 });
 
-connection.onInitialized(() => {
+connection.onInitialized(async () => {
+    try {
+        const folders = await connection.workspace.getWorkspaceFolders();
+        if (folders) {
+            for (const folder of folders) {
+                const dirPath = folder.uri.startsWith('file://') ? fileURLToPath(folder.uri) : folder.uri;
+                scanDirectory(dirPath);
+            }
+        }
+    } catch { }
 });
 
 documents.onDidChangeContent(change => {
+    indexPineContent(change.document.uri, change.document.getText());
     validateTextDocument(change.document);
 });
 
@@ -268,7 +336,7 @@ connection.onDefinition((params) => {
 
         const udf = analyzer.getFunctionDefinition(word);
         if (udf && udf.range) {
-            return [{ uri: params.textDocument.uri, range: udf.range }];
+            return [{ uri: udf.uri || params.textDocument.uri, range: udf.range }];
         }
 
         const localDef = (analyzer as any).getDefinitionLocation(node);
@@ -336,8 +404,9 @@ connection.onCompletion((params) => {
     if (fullPrefix.includes('.')) {
         const dotIndex = fullPrefix.lastIndexOf('.');
         const namespace = fullPrefix.substring(0, dotIndex);
+        const analyzer = analyzers.get(params.textDocument.uri);
 
-        return definitions.functions
+        const builtinItems = definitions.functions
             .filter((f: any) => f.name.startsWith(namespace + '.'))
             .map((f: any) => {
                 const nameWithoutNamespace = f.name.substring(namespace.length + 1);
@@ -350,6 +419,26 @@ connection.onCompletion((params) => {
                     data: f.name
                 };
             });
+
+        const libItems: CompletionItem[] = [];
+        if (analyzer) {
+            analyzer.userFunctionTable.forEach((udf, name) => {
+                if (name.startsWith(namespace + '.')) {
+                    const nameWithoutNamespace = name.substring(namespace.length + 1);
+                    const paramStr = udf.params.map(p => p.name).join(', ');
+                    libItems.push({
+                        label: nameWithoutNamespace,
+                        kind: CompletionItemKind.Function,
+                        detail: `Library Function (${paramStr})`,
+                        documentation: udf.description || undefined,
+                        insertText: nameWithoutNamespace,
+                        data: name
+                    });
+                }
+            });
+        }
+
+        return [...builtinItems, ...libItems];
     }
 
     const items: CompletionItem[] = [];
@@ -453,8 +542,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         if (tree) {
             let analyzer = analyzers.get(textDocument.uri);
             if (!analyzer) {
-                analyzer = new Analyzer(definitions);
+                analyzer = new Analyzer(definitions, workspaceLibraries);
                 analyzers.set(textDocument.uri, analyzer);
+            } else {
+                analyzer.setLibraries(workspaceLibraries);
             }
             const diagnostics = analyzer.analyze(tree.rootNode as any);
             connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
@@ -463,6 +554,19 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         connection.console.error(`Error validating document ${textDocument.uri}: ${err}`);
     }
 }
+
+connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc) return [];
+    const analyzer = analyzers.get(params.textDocument.uri);
+    if (!analyzer) return [];
+    return analyzer.getCodeActions(
+        doc.getText(),
+        params.textDocument.uri,
+        params.range,
+        params.context.diagnostics
+    );
+});
 
 connection.languages.semanticTokens.on((params) => {
     const doc = documents.get(params.textDocument.uri);

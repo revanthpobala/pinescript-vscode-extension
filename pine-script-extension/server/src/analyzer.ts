@@ -18,18 +18,35 @@ export interface SyntaxNode {
     namedChildren: SyntaxNode[];
 }
 
-interface FunctionDefinition {
+export interface FunctionDefinition {
     name: string;
     description: string;
     returnType: string;
     params: { name: string; type: string; required: boolean, desc?: string }[];
     range?: Range;
+    uri?: string;
+}
+
+export interface LibraryExport {
+    name: string;
+    description?: string;
+    returnType: string;
+    params: { name: string; type: string; required: boolean; desc?: string }[];
+}
+
+export interface LibraryInfo {
+    name: string;
+    uri?: string;
+    functions: Map<string, LibraryExport>;
+    types: Set<string>;
 }
 
 export class Analyzer {
     private definitions: Map<string, FunctionDefinition>;
     private scopeStack: Map<string, { name: string, qualifier: Qualifier, usageCount: number, range?: Range }>[] = [new Map()];
     public userFunctionTable: Map<string, FunctionDefinition> = new Map();
+    public libraries: Map<string, LibraryInfo> = new Map();
+    private strategyEntryIds: Set<string> = new Set();
     private sourceCode: string = ''; // For text-based fallback checks
 
     // Functions that return void - cannot be assigned to variables
@@ -184,14 +201,82 @@ export class Analyzer {
         'nz', 'fill', 'log.info', 'log.warning', 'log.error'
     ]);
 
-    constructor(definitionsJson: any) {
+    constructor(definitionsJson: any, libraries?: Map<string, LibraryInfo>) {
         this.definitions = new Map();
         if (definitionsJson && definitionsJson.functions) {
             for (const func of definitionsJson.functions) {
                 this.definitions.set(func.name, func);
             }
         }
+        if (libraries) {
+            this.libraries = libraries;
+        }
         this.initializeBuiltIns();
+    }
+
+    public setLibraries(libraries: Map<string, LibraryInfo>) {
+        this.libraries = libraries;
+    }
+
+    public static parseLibrary(sourceCode: string, uri?: string): LibraryInfo | null {
+        const libMatch = sourceCode.match(/library\s*\(\s*["']([^"']+)["']/);
+        if (!libMatch) return null;
+
+        const libName = libMatch[1];
+        const functions = new Map<string, LibraryExport>();
+        const types = new Set<string>();
+
+        // Exported functions: export [type] [method] name(params) =>
+        const exportFuncRegex = /export\s+(?:(?:int|float|bool|string|color|line|label|box|table|matrix|array|[a-zA-Z_]\w*(?:<[^>]+>|\[\])?)\s+)?(?:method\s+)?([a-zA-Z_]\w*)\s*\(([\s\S]*?)\)\s*=>/g;
+        let match;
+        while ((match = exportFuncRegex.exec(sourceCode)) !== null) {
+            const funcName = match[1];
+            const rawParams = match[2];
+            const params: { name: string; type: string; required: boolean; desc?: string }[] = [];
+
+            if (rawParams.trim().length > 0) {
+                const paramParts = rawParams.split(',');
+                for (const part of paramParts) {
+                    const trimmed = part.trim();
+                    if (!trimmed) continue;
+                    
+                    const eqIdx = trimmed.indexOf('=');
+                    const hasDefault = eqIdx !== -1;
+                    const declPart = hasDefault ? trimmed.substring(0, eqIdx).trim() : trimmed;
+                    const tokens = declPart.split(/\s+/).filter(t => t.length > 0);
+                    
+                    if (tokens.length > 0) {
+                        const pName = tokens[tokens.length - 1];
+                        const pType = tokens.length > 1 ? tokens.slice(0, tokens.length - 1).join(' ') : 'any';
+                        params.push({
+                            name: pName,
+                            type: pType,
+                            required: !hasDefault
+                        });
+                    }
+                }
+            }
+
+            functions.set(funcName, {
+                name: funcName,
+                description: `Exported function from library '${libName}'`,
+                returnType: 'any',
+                params
+            });
+        }
+
+        // Exported types: export type TypeName
+        const exportTypeRegex = /export\s+type\s+([a-zA-Z_]\w*)/g;
+        while ((match = exportTypeRegex.exec(sourceCode)) !== null) {
+            types.add(match[1]);
+        }
+
+        return {
+            name: libName,
+            uri,
+            functions,
+            types
+        };
     }
 
     private initializeBuiltIns() {
@@ -604,7 +689,43 @@ export class Analyzer {
             }
         }
 
-        // Pass 0: Greedy Text Scan for Function and Variable Definitions
+        // Pass 0: Greedy Text Scan for Function, Variable, Strategy Entry, and Import Definitions
+        this.strategyEntryIds.clear();
+        const entryRegex = /strategy\.(?:entry|order)\s*\(\s*(?:id\s*=\s*)?["']([^"']+)["']/g;
+        let entryMatch;
+        while ((entryMatch = entryRegex.exec(this.sourceCode)) !== null) {
+            this.strategyEntryIds.add(entryMatch[1]);
+        }
+        const namedEntryRegex = /strategy\.(?:entry|order)\s*\([^)]*?\bid\s*=\s*["']([^"']+)["']/g;
+        while ((entryMatch = namedEntryRegex.exec(this.sourceCode)) !== null) {
+            this.strategyEntryIds.add(entryMatch[1]);
+        }
+
+        // Greedy scan for imports to resolve workspace libraries early
+        const importRegex = /import\s+([a-zA-Z0-9_/]+)(?:\s+as\s+([a-zA-Z_]\w*))?/g;
+        let impMatch;
+        while ((impMatch = importRegex.exec(this.sourceCode)) !== null) {
+            const rawLib = impMatch[1];
+            const parts = rawLib.split('/');
+            const libName = parts.length >= 2 ? parts[1] : parts[0];
+            const alias = impMatch[2] || libName;
+            this.define(alias, { name: 'namespace', qualifier: Qualifier.Simple });
+
+            if (this.libraries.has(libName)) {
+                const lib = this.libraries.get(libName)!;
+                for (const [fnName, fnDef] of lib.functions) {
+                    const qualifiedName = `${alias}.${fnName}`;
+                    this.userFunctionTable.set(qualifiedName, {
+                        name: qualifiedName,
+                        description: fnDef.description || `Exported function from '${lib.name}'`,
+                        returnType: fnDef.returnType,
+                        params: fnDef.params,
+                        uri: lib.uri
+                    });
+                }
+            }
+        }
+
         // Catch definitions that Tree-sitter fractures (e.g. matrix<int> m = ...)
         const functionDefRegex = /^([a-zA-Z_]\w*)\s*\([^)]*?\)\s*=\s*>?/gm;
         let match;
@@ -668,18 +789,32 @@ export class Analyzer {
                 }
             }
 
-            // 3. Collect Import Aliases
+            // 3. Collect Import Aliases and Link Workspace Libraries
             if (node.type === 'import_statement') {
                 const aliasNode = node.childForFieldName('alias');
-                if (aliasNode?.text) {
-                    this.define(aliasNode.text, { name: 'namespace', qualifier: Qualifier.Simple });
-                } else {
-                    const libNode = node.childForFieldName('library');
-                    if (libNode) {
-                        const parts = libNode.text.split('/');
-                        if (parts.length >= 2) {
-                            this.define(parts[1], { name: 'namespace', qualifier: Qualifier.Simple }, libNode);
-                        }
+                const libNode = node.childForFieldName('library');
+                let libName = '';
+                if (libNode) {
+                    const clean = libNode.text.replace(/["']/g, '');
+                    const parts = clean.split('/');
+                    libName = parts.length >= 2 ? parts[1] : parts[0];
+                }
+                const alias = aliasNode?.text || libName;
+                if (alias) {
+                    this.define(alias, { name: 'namespace', qualifier: Qualifier.Simple }, aliasNode || libNode || undefined);
+                }
+
+                if (libName && this.libraries.has(libName)) {
+                    const lib = this.libraries.get(libName)!;
+                    for (const [fnName, fnDef] of lib.functions) {
+                        const qualifiedName = `${alias}.${fnName}`;
+                        this.userFunctionTable.set(qualifiedName, {
+                            name: qualifiedName,
+                            description: fnDef.description || `Exported function from '${lib.name}'`,
+                            returnType: fnDef.returnType,
+                            params: fnDef.params,
+                            uri: lib.uri
+                        });
                     }
                 }
             }
@@ -796,21 +931,39 @@ export class Analyzer {
         const finalDiagnostics: Diagnostic[] = [];
 
         for (const diag of diagnostics) {
-            const msg = typeof diag.message === 'string' ? diag.message : diag.message.value;
+            const msg = typeof diag.message === 'string' ? diag.message : (diag.message as any).value || '';
             if (msg.startsWith('Invalid operator space')) {
                 malformedLines.add(diag.range.start.line);
             }
         }
 
         for (const diag of diagnostics) {
-            const msg = typeof diag.message === 'string' ? diag.message : diag.message.value;
+            const msg = typeof diag.message === 'string' ? diag.message : (diag.message as any).value || '';
             if (malformedLines.has(diag.range.start.line) && !msg.startsWith('Invalid operator space')) {
                 continue; // Suppress AST noise
             }
             finalDiagnostics.push(diag);
         }
 
-        return finalDiagnostics;
+        // SUPPRESSION COMMENTS: // @pine-ignore-next-line and // @pine-ignore
+        const lines = this.sourceCode.split(/\r?\n/);
+        const filteredDiagnostics: Diagnostic[] = [];
+
+        for (const diag of finalDiagnostics) {
+            const line = diag.range.start.line;
+            const prevLine = line > 0 ? (lines[line - 1] || '').trim() : '';
+            const currentLine = (lines[line] || '').trim();
+
+            if (prevLine.startsWith('// @pine-ignore-next-line') || prevLine.startsWith('// @pine-ignore')) {
+                continue;
+            }
+            if (currentLine.includes('// @pine-ignore') || currentLine.includes('// @pine-ignore-line')) {
+                continue;
+            }
+            filteredDiagnostics.push(diag);
+        }
+
+        return filteredDiagnostics;
     }
 
     private visit(node: SyntaxNode, diagnostics: Diagnostic[]) {
@@ -1497,8 +1650,9 @@ export class Analyzer {
             const symbol = this.getSymbol(objectName);
             const isUserFunction = this.userFunctionTable.has(objectName);
             const isKnownFunction = this.definitions.has(objectName);
+            const isImportedNamespace = this.libraries.has(objectName) || Array.from(this.userFunctionTable.keys()).some(k => k.startsWith(objectName + '.'));
 
-            if (!symbol && !isUserFunction && !isKnownFunction) {
+            if (!symbol && !isUserFunction && !isKnownFunction && !isImportedNamespace) {
                 // Fallback: Check if this looks like a typed function parameter
                 // Pattern: TypeName objectName in function signature (e.g., "AnchorData anchor")
                 const typedParamPattern = new RegExp(`\\b\\w+\\s+${objectName}\\s*[,)]`, 'g');
@@ -1715,6 +1869,22 @@ export class Analyzer {
         const argListNode = node.namedChildren.find(c => c.type === 'argument_list');
         const args = argListNode ? argListNode.namedChildren : [];
 
+        // Feature 4: request.security repainting detection
+        if (funcName === 'request.security') {
+            this.checkSecurityRepainting(node, funcNameNode, args, diagnostics);
+        }
+
+        // Feature 5: Strategy-specific diagnostics
+        if (funcName === 'strategy') {
+            this.checkStrategyDeclaration(node, funcNameNode, args, diagnostics);
+        } else if (funcName === 'strategy.close_all') {
+            this.checkStrategyCloseAll(node, diagnostics);
+        } else if (funcName === 'strategy.exit') {
+            this.checkStrategyExit(node, args, diagnostics);
+        } else if (funcName === 'strategy.entry' || funcName === 'strategy.order') {
+            this.collectStrategyEntryId(args);
+        }
+
         // Count provided arguments
         const providedCount = isMethodCall ? args.length + 1 : args.length;
         const requiredParams = definition.params.filter((p: any) => p.optional === false || p.required === true);
@@ -1902,5 +2072,376 @@ export class Analyzer {
             node.endPosition.row,
             node.endPosition.column
         );
+    }
+
+    private parseNamedArg(arg: SyntaxNode): { name: string; valueText: string } | null {
+        const nameNode = arg.childForFieldName('name');
+        if (nameNode) {
+            const valNode = arg.childForFieldName('value');
+            return {
+                name: nameNode.text,
+                valueText: valNode ? valNode.text.trim() : ''
+            };
+        }
+        const text = arg.text.trim();
+        // Match identifier = (single equals, not ==, !=, <=, >=) value
+        const match = text.match(/^([a-zA-Z_]\w*)\s*=(?!=)\s*([\s\S]*)$/);
+        if (match) {
+            return {
+                name: match[1],
+                valueText: match[2].trim()
+            };
+        }
+        return null;
+    }
+
+    private collectStrategyEntryId(args: SyntaxNode[]) {
+        let entryId: string | null = null;
+        for (const arg of args) {
+            const named = this.parseNamedArg(arg);
+            if (named && named.name === 'id') {
+                const m = named.valueText.match(/^["']([^"']+)["']$/);
+                if (m) entryId = m[1];
+                break;
+            }
+        }
+        if (!entryId && args.length > 0) {
+            const firstArg = args[0];
+            const named = this.parseNamedArg(firstArg);
+            if (!named) {
+                const m = firstArg.text.trim().match(/^["']([^"']+)["']$/);
+                if (m) entryId = m[1];
+            }
+        }
+        if (entryId) {
+            this.strategyEntryIds.add(entryId);
+        }
+    }
+
+    private checkSecurityRepainting(node: SyntaxNode, funcNameNode: SyntaxNode, args: SyntaxNode[], diagnostics: Diagnostic[]) {
+        // Do not emit warning if arguments are incomplete/fractured
+        if (args.length < 3) return;
+
+        let hasLookahead = false;
+        let lookaheadOn = false;
+
+        for (const arg of args) {
+            const named = this.parseNamedArg(arg);
+            if (named && named.name === 'lookahead') {
+                hasLookahead = true;
+                if (named.valueText.includes('lookahead_on')) {
+                    lookaheadOn = true;
+                }
+                break;
+            }
+        }
+
+        if (!hasLookahead) {
+            let positionalIndex = 0;
+            for (const arg of args) {
+                const named = this.parseNamedArg(arg);
+                if (!named) {
+                    if (positionalIndex === 4) {
+                        hasLookahead = true;
+                        if (arg.text.includes('lookahead_on')) {
+                            lookaheadOn = true;
+                        }
+                        break;
+                    }
+                    positionalIndex++;
+                }
+            }
+        }
+
+        if (!hasLookahead || !lookaheadOn) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(funcNameNode),
+                message: "request.security() called without 'barmerge.lookahead_on' — this may cause repainting on historical bars.",
+                code: 'PSP004',
+                source: 'Pine Script'
+            });
+        }
+    }
+
+    private checkStrategyDeclaration(node: SyntaxNode, funcNameNode: SyntaxNode, args: SyntaxNode[], diagnostics: Diagnostic[]) {
+        let hasCommission = false;
+        let hasSlippage = false;
+
+        for (const arg of args) {
+            const named = this.parseNamedArg(arg);
+            if (named) {
+                if (named.name === 'commission_value' || named.name === 'commission_type') {
+                    hasCommission = true;
+                }
+                if (named.name === 'slippage') {
+                    hasSlippage = true;
+                }
+            }
+        }
+
+        if (!hasCommission && !hasSlippage) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(funcNameNode),
+                message: "Strategy declaration missing 'commission_value' and 'slippage'. Backtest results may be unrealistic without transaction costs.",
+                code: 'PSP005_COSTS',
+                source: 'Pine Script'
+            });
+        } else if (!hasCommission) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(funcNameNode),
+                message: "Strategy declaration missing 'commission_value'. Backtest results may be unrealistic without transaction costs.",
+                code: 'PSP005_COMMISSION',
+                source: 'Pine Script'
+            });
+        } else if (!hasSlippage) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(funcNameNode),
+                message: "Strategy declaration missing 'slippage'. Market orders may experience execution drift.",
+                code: 'PSP005_SLIPPAGE',
+                source: 'Pine Script'
+            });
+        }
+    }
+
+    private checkStrategyCloseAll(node: SyntaxNode, diagnostics: Diagnostic[]) {
+        if (this.isInsideError(node)) return;
+
+        const lineText = (this.sourceCode.split(/\r?\n/)[node.startPosition.row] || '');
+        if (lineText.includes('=>')) return;
+
+        let isConditional = false;
+        let curr: SyntaxNode | null = node.parent;
+        while (curr) {
+            if (
+                curr.type === 'if_statement' ||
+                curr.type === 'if_expression' ||
+                curr.type === 'switch_statement' ||
+                curr.type === 'switch_expression' ||
+                curr.type === 'conditional_expression' ||
+                curr.type === 'ternary_expression' ||
+                curr.type === 'for_statement' ||
+                curr.type === 'while_statement' ||
+                curr.type === 'function_definition' ||
+                curr.type === 'arrow_function'
+            ) {
+                isConditional = true;
+                break;
+            }
+            curr = curr.parent;
+        }
+
+        if (!isConditional) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(node),
+                message: "strategy.close_all() is called unconditionally outside of any conditional statement. This will close all positions on every bar.",
+                code: 'PSP005_UNCONDITIONAL',
+                source: 'Pine Script'
+            });
+        }
+    }
+
+    private checkStrategyExit(node: SyntaxNode, args: SyntaxNode[], diagnostics: Diagnostic[]) {
+        let fromEntryId: string | null = null;
+        for (const arg of args) {
+            const named = this.parseNamedArg(arg);
+            if (named && named.name === 'from_entry') {
+                const m = named.valueText.match(/^["']([^"']+)["']$/);
+                if (m) fromEntryId = m[1];
+                break;
+            }
+        }
+        if (!fromEntryId && args.length >= 2) {
+            const secondArg = args[1];
+            const named = this.parseNamedArg(secondArg);
+            if (!named) {
+                const m = secondArg.text.trim().match(/^["']([^"']+)["']$/);
+                if (m) fromEntryId = m[1];
+            }
+        }
+
+        if (fromEntryId && this.strategyEntryIds.size > 0 && !this.strategyEntryIds.has(fromEntryId)) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: this.getRange(node),
+                message: `strategy.exit references unknown from_entry id '${fromEntryId}'. No matching strategy.entry() found with this id.`,
+                code: 'PSP005_ORPHAN',
+                source: 'Pine Script'
+            });
+        }
+    }
+
+    private findCallClosingParen(lines: string[], startLine: number, startChar: number): { line: number; character: number } | null {
+        let parenDepth = 0;
+        let foundStart = false;
+
+        for (let l = startLine; l < lines.length; l++) {
+            const startC = (l === startLine) ? startChar : 0;
+            const lineStr = lines[l] || '';
+            for (let c = startC; c < lineStr.length; c++) {
+                const char = lineStr[c];
+                if (char === '(') {
+                    parenDepth++;
+                    foundStart = true;
+                } else if (char === ')' && foundStart) {
+                    parenDepth--;
+                    if (parenDepth === 0) {
+                        return { line: l, character: c };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public getCodeActions(
+        sourceCode: string,
+        uri: string,
+        range: Range,
+        diagnostics: Diagnostic[]
+    ): any[] {
+        const actions: any[] = [];
+        const lines = sourceCode.split(/\r?\n/);
+
+        for (const diag of diagnostics) {
+            const line = diag.range.start.line;
+            const lineText = lines[line] || '';
+            const indent = lineText.match(/^\s*/)?.[0] || '';
+            const msg = typeof diag.message === 'string' ? diag.message : (diag.message as any).value || '';
+
+            // 1. Suppression comment for ANY diagnostic
+            actions.push({
+                title: 'Suppress with // @pine-ignore-next-line',
+                kind: 'quickfix',
+                diagnostics: [diag],
+                edit: {
+                    changes: {
+                        [uri]: [
+                            {
+                                range: {
+                                    start: { line, character: 0 },
+                                    end: { line, character: 0 }
+                                },
+                                newText: `${indent}// @pine-ignore-next-line\n`
+                            }
+                        ]
+                    }
+                }
+            });
+
+            // 2. Fix malformed operators
+            if (msg.startsWith('Invalid operator space')) {
+                const opMatch = msg.match(/did you mean '([^']+)'\?/);
+                if (opMatch) {
+                    const replacement = opMatch[1];
+                    actions.push({
+                        title: `Fix operator spacing: replace with '${replacement}'`,
+                        kind: 'quickfix',
+                        isPreferred: true,
+                        diagnostics: [diag],
+                        edit: {
+                            changes: {
+                                [uri]: [
+                                    {
+                                        range: diag.range,
+                                        newText: replacement
+                                    }
+                                ]
+                            }
+                        }
+                    });
+                }
+            }
+
+            // 3. request.security lookahead repainting fix
+            if (diag.code === 'PSP004' || msg.includes('barmerge.lookahead_on') || msg.includes('lookahead enabled')) {
+                const closePos = this.findCallClosingParen(lines, diag.range.start.line, diag.range.start.character);
+                if (closePos) {
+                    let offPos: { line: number; character: number; length: number } | null = null;
+                    for (let l = diag.range.start.line; l <= closePos.line; l++) {
+                        const lText = lines[l] || '';
+                        const offIdx = lText.indexOf('barmerge.lookahead_off');
+                        if (offIdx !== -1) {
+                            offPos = { line: l, character: offIdx, length: 'barmerge.lookahead_off'.length };
+                            break;
+                        }
+                    }
+
+                    if (offPos) {
+                        actions.push({
+                            title: "Replace 'barmerge.lookahead_off' with 'barmerge.lookahead_on'",
+                            kind: 'quickfix',
+                            isPreferred: true,
+                            diagnostics: [diag],
+                            edit: {
+                                changes: {
+                                    [uri]: [
+                                        {
+                                            range: {
+                                                start: { line: offPos.line, character: offPos.character },
+                                                end: { line: offPos.line, character: offPos.character + offPos.length }
+                                            },
+                                            newText: 'barmerge.lookahead_on'
+                                        }
+                                    ]
+                                }
+                            }
+                        });
+                    } else {
+                        actions.push({
+                            title: "Add 'lookahead = barmerge.lookahead_on' to prevent repainting",
+                            kind: 'quickfix',
+                            isPreferred: true,
+                            diagnostics: [diag],
+                            edit: {
+                                changes: {
+                                    [uri]: [
+                                        {
+                                            range: {
+                                                start: closePos,
+                                                end: closePos
+                                            },
+                                            newText: ', lookahead = barmerge.lookahead_on'
+                                        }
+                                    ]
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+
+            // 4. Strategy costs fix
+            if (diag.code === 'PSP005_COSTS' || msg.includes("'commission_value' and 'slippage'")) {
+                const closePos = this.findCallClosingParen(lines, diag.range.start.line, diag.range.start.character);
+                if (closePos) {
+                    actions.push({
+                        title: "Add standard commission and slippage to strategy()",
+                        kind: 'quickfix',
+                        isPreferred: true,
+                        diagnostics: [diag],
+                        edit: {
+                            changes: {
+                                [uri]: [
+                                    {
+                                        range: {
+                                            start: closePos,
+                                            end: closePos
+                                        },
+                                        newText: ', commission_type = strategy.commission.percent, commission_value = 0.1, slippage = 2'
+                                    }
+                                ]
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        return actions;
     }
 }

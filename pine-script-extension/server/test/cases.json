@@ -409,5 +409,138 @@
             "Invalid operator space, did you mean '=>'?"
         ],
         "description": "Checks that the static checker catches spaced => for functions with no arguments, avoiding the generic 'Cannot assign to a function call' error."
+    },
+    {
+        "name": "[Feature 4] request.security without lookahead emits warning",
+        "code": "//@version=6\nindicator('Test')\ndailyClose = request.security(syminfo.tickerid, 'D', close)\nplot(dailyClose)",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "errorMessages": [
+            "request.security() called without 'barmerge.lookahead_on'"
+        ]
+    },
+    {
+        "name": "[Feature 4] request.security with lookahead_off emits warning",
+        "code": "//@version=6\nindicator('Test')\ndailyClose = request.security(syminfo.tickerid, 'D', close, lookahead=barmerge.lookahead_off)\nplot(dailyClose)",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "errorMessages": [
+            "request.security() called without 'barmerge.lookahead_on'"
+        ]
+    },
+    {
+        "name": "[Feature 4] request.security with lookahead_on emits no warning",
+        "code": "//@version=6\nindicator('Test')\ndailyClose = request.security(syminfo.tickerid, 'D', close[1], lookahead=barmerge.lookahead_on)\nplot(dailyClose)",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Feature 4] request.security with positional lookahead_on emits no warning",
+        "code": "//@version=6\nindicator('Test')\ndailyClose = request.security(syminfo.tickerid, 'D', close[1], barmerge.gaps_off, barmerge.lookahead_on)\nplot(dailyClose)",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Feature 5] Strategy missing commission and slippage emits warning",
+        "code": "//@version=6\nstrategy('MyStrat', overlay=true)\nstrategy.entry('Long', strategy.long)",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "errorMessages": [
+            "Strategy declaration missing 'commission_value' and 'slippage'"
+        ]
+    },
+    {
+        "name": "[Feature 5] Strategy with commission and slippage emits no warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nstrategy.entry('Long', strategy.long)",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Feature 5] Strategy exit with matching entry id emits no warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nstrategy.entry('Long', strategy.long)\nstrategy.exit('Exit', from_entry='Long')",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Feature 5] Strategy exit with orphaned entry id emits warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nstrategy.entry('Long', strategy.long)\nstrategy.exit('Exit', from_entry='InvalidEntry')",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "errorMessages": [
+            "strategy.exit references unknown from_entry id 'InvalidEntry'"
+        ]
+    },
+    {
+        "name": "[Feature 5] Strategy close_all unconditional emits warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nstrategy.close_all()",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "errorMessages": [
+            "strategy.close_all() is called unconditionally outside of any conditional statement"
+        ]
+    },
+    {
+        "name": "[Feature 5] Strategy close_all inside conditional emits no warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nif close < open\n    strategy.close_all()",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Feature 3] Diagnostic suppression with @pine-ignore-next-line",
+        "code": "//@version=6\nindicator('Test')\n// @pine-ignore-next-line\nx = alert('hi')",
+        "expectedErrors": 0
+    },
+    {
+        "name": "[Feature 3] Code actions for operator and security",
+        "code": "//@version=6\nindicator('Test')\nzf(src, len) = >\n    src + len\ndaily = request.security(syminfo.tickerid, 'D', close)",
+        "expectedErrors": 1,
+        "expectedWarnings": 1,
+        "expectedCodeActions": [
+            "Fix operator spacing",
+            "Add 'lookahead = barmerge.lookahead_on'",
+            "Suppress with // @pine-ignore-next-line"
+        ]
+    },
+    {
+        "name": "[Feature 2] Multi-file Library Awareness: valid call",
+        "libraryCode": "//@version=6\nlibrary('MathLib')\nexport add(int a, int b) =>\n    a + b",
+        "code": "//@version=6\nindicator('Consumer')\nimport MathLib as ml\nx = ml.add(10, 20)",
+        "expectedErrors": 0
+    },
+    {
+        "name": "[Feature 2] Multi-file Library Awareness: missing argument caught",
+        "libraryCode": "//@version=6\nlibrary('MathLib')\nexport add(int a, int b) =>\n    a + b",
+        "code": "//@version=6\nindicator('Consumer')\nimport MathLib as ml\nx = ml.add(10)",
+        "expectedErrors": 1,
+        "errorMessages": [
+            "Missing required arguments for 'ml.add()'. Expected 2, found 1."
+        ]
+    },
+    {
+        "name": "[Edge Case] request.security with equality operator in positional expression",
+        "code": "//@version=6\nindicator('Test')\ndailyClose = request.security(syminfo.tickerid, 'D', close == open ? high : low, barmerge.gaps_off, barmerge.lookahead_on)\nplot(dailyClose)",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Edge Case] Library with method export and qualified parameters with defaults",
+        "libraryCode": "//@version=6\nlibrary('Indicators')\nexport method movingAverage(series float src, simple int len = 14) =>\n    ta.sma(src, len)",
+        "code": "//@version=6\nindicator('Test')\nimport Indicators as ind\nx = ind.movingAverage(close, len=20)\nplot(x)",
+        "expectedErrors": 0
+    },
+    {
+        "name": "[Edge Case] Switch statement strategy.close_all is conditional, emits no warning",
+        "code": "//@version=6\nstrategy('MyStrat', commission_value=0.1, slippage=2)\nswitch\n    close < open => strategy.close_all()",
+        "expectedErrors": 0,
+        "expectedWarnings": 0
+    },
+    {
+        "name": "[Edge Case] Quick fix paren matching for nested request.security in plot()",
+        "code": "//@version=6\nindicator('Test')\nplot(request.security(syminfo.tickerid, 'D', close))",
+        "expectedErrors": 0,
+        "expectedWarnings": 1,
+        "expectedCodeActions": [
+            "Add 'lookahead = barmerge.lookahead_on'"
+        ]
     }
 ]

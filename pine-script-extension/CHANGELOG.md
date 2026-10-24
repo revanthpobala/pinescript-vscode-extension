@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.2] - 2026-10-24
+### Added
+- **Multi-File / Library Awareness:** Workspace-wide indexing of Pine Script libraries. Resolves `import` namespaces and aliases, enabling cross-file completions, jump to definition, hover tooltips, and method call validation.
+- **Code Actions & Quick Fixes:** Interactive quick fixes in VS Code:
+  - Automatic operator spacing fixes (`= >` -> `=>`, `+ =` -> `+=`, `! =` -> `!=`, etc.).
+  - Automatic `request.security()` lookahead repainting fixes (safely replaces `barmerge.lookahead_off` with `barmerge.lookahead_on`).
+  - Strategy declaration cost templates (`commission_type`, `commission_value`, `slippage`).
+  - Diagnostic suppression via `// @pine-ignore-next-line`.
+- **`request.security()` Repainting Diagnostics (`PSP004`):** Flags multi-timeframe calls missing `barmerge.lookahead_on` that risk intrabar historical repainting.
+- **Strategy Backtest Quality Diagnostics (`PSP005`):**
+  - Missing commission and slippage detection (`PSP005_COSTS`).
+  - Orphaned `strategy.exit()` from_entry ID validation (`PSP005_ORPHAN`).
+  - Unconditional `strategy.close_all()` warning (`PSP005_UNCONDITIONAL`).
+
+### Changed
+- **License Modernization:** Converted repository and extension licensing to standard MIT.
+- **Dependency Upgrades:** Modernized development toolchain including `@types/node` (^26.6.5), `web-tree-sitter` (^0.27.1), `vscode-languageserver` (^11.0.0), `vscode-languageserver-textdocument` (^1.0.16), and `vscode-languageclient` (^11.0.0).
+- **Test Suite Expansion:** Expanded automated regression test suite to 77 tests with 100% pass rate.
+
 ## [1.4.1] - 2026-10-03
 ### Changed
 - **Dependency Upgrades & Infrastructure:** Upgraded all workspace dependencies across client, server, extension root, and tree-sitter modules.
