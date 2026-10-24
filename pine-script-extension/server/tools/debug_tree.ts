@@ -15,7 +15,6 @@ if alert('hi')
 
     const tree = parser.parse(code);
     if (!tree) {
-        console.log('Parser returned null tree');
         return;
     }
     const root = tree.rootNode;
