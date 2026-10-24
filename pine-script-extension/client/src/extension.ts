@@ -244,7 +244,7 @@ class InputPreviewProvider implements WebviewViewProvider {
         if (hasGroups) {
             tabStrip = `<div class="tab-strip">` +
                 groupNames.map((g, i) =>
-                    `<button class="tab${i === 0 ? ' active' : ''}" data-tab="${i}">${g === '__default__' ? 'General' : g}</button>`
+                    `<button class="tab${i === 0 ? ' active' : ''}" data-tab="${i}">${escHtml(g === '__default__' ? 'General' : g)}</button>`
                 ).join('') +
                 `</div>`;
 
@@ -758,11 +758,11 @@ class InputPreviewProvider implements WebviewViewProvider {
         if (t === 'int' || t === 'float' || t === 'price' || t === 'legacy') {
             const val   = item.defval || '0';
             const step  = item.step   || (t === 'float' || t === 'price' ? '0.01' : '1');
-            const minA  = item.minval ? `data-min="${item.minval}"` : '';
-            const maxA  = item.maxval ? `data-max="${item.maxval}"` : '';
+            const minA  = item.minval ? `data-min="${escHtml(item.minval)}"` : '';
+            const maxA  = item.maxval ? `data-max="${escHtml(item.maxval)}"` : '';
             return /* html */`
 <div class="ctrl-number">
-  <input type="text" value="${escHtml(val)}" data-step="${step}" ${minA} ${maxA} readonly>
+  <input type="text" value="${escHtml(val)}" data-step="${escHtml(step)}" ${minA} ${maxA} readonly>
   <div class="stepper">
     <button class="up" title="Increment">▲</button>
     <button class="down" title="Decrement">▼</button>
