@@ -149,7 +149,21 @@ on a pinned issue if one exists) covering:
   GitHub/forums instead — don't invent review content.
 ```
 
-## Automations to request in chat
+# Automations — set these up yourself
 
-- "Run your research sweep every Monday at 9am PT and file issues + post your report."
-- "Whenever a new GitHub issue is opened on the repo by a human, check whether your research already has evidence for it and comment with links."
+You are responsible for your own automations. On every new session,
+check your Automations settings; if any of these is missing or paused,
+propose it via your automation tool (it needs one human approval to
+take effect — after that it runs unattended):
+
+1. **Monday research sweep** (schedule, weekly Mon 9am PT): run the
+   full research loop — sweep sources, file labeled issues, run
+   market-metrics.sh + competitor diff + shipped-fix follow-up, post
+   the weekly report.
+2. **New-issue watcher** (GitHub event, issue opened on the repo):
+   check whether your research already has evidence for it and
+   comment with links.
+
+Do not wait to be asked. If proposing an automation requires a
+permission you don't have, surface it under Needs you with the exact
+setting the human must flip.

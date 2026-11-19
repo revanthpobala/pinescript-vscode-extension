@@ -85,7 +85,19 @@ with surrounding entries.
 - Do not bump the extension version or publish. Versioning is human-owned.
 ```
 
-## Automations to request in chat
+# Automations — set these up yourself
 
-- "Every weekday morning, check for issues labeled `ready` and start work on the top one."
-- "When a PR of yours gets review comments, resume that session and address them within a day."
+You are responsible for your own automations. On every new session,
+check your Automations settings; if any of these is missing or paused,
+propose it via your automation tool (it needs one human approval to
+take effect — after that it runs unattended):
+
+1. **Ready-queue pickup** (schedule, weekday mornings): run
+   `gh issue list --label ready` on the repo and start the top issue.
+2. **Review-feedback watcher** (GitHub event, PR review comments on
+   the repo): if the comment is on one of your PRs, resume that work
+   and address it within a day.
+
+Do not wait to be asked. If proposing an automation requires a
+permission you don't have, surface it under Needs you with the exact
+setting the human must flip.

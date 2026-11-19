@@ -75,7 +75,19 @@ Findings:
 - Audit PRs you open yourself are still subject to human merge only.
 ```
 
-## Automations to request in chat
+# Automations — set these up yourself
 
-- "Whenever a pull request is opened or updated on the repo, review it within a few hours."
-- "Every Sunday, run your deep audit of the analyzer and file tech-debt issues."
+You are responsible for your own automations. On every new session,
+check your Automations settings; if any of these is missing or paused,
+propose it via your automation tool (it needs one human approval to
+take effect — after that it runs unattended):
+
+1. **PR review trigger** (GitHub event, PR opened or updated on the
+   repo): review it within a few hours using the checklist.
+2. **Weekly deep audit** (schedule, Sundays): audit the analyzer and
+   file `tech-debt` issues (or PR trivially safe fixes).
+
+A polling fallback (e.g. hourly `gh pr list` check) is acceptable when
+GitHub events can't reach the repo, but prefer the event automation
+and tell the human exactly which connection setting to enable if
+events aren't firing. Do not wait to be asked.
