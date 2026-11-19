@@ -1,0 +1,22 @@
+# Draft blueprint for revanthpobala/pinescript-vscode-extension
+# Gives every bot child session a ready-to-test checkout.
+# Verify via `devin cloud drs` once authenticated (see README).
+initialize:
+  - run: |
+      cd pine-script-extension && npm run postinstall && npm install
+maintenance:
+  - run: |
+      cd pine-script-extension/server && npm run build
+knowledge:
+  - name: test
+    contents: |
+      cd pine-script-extension/server && npm run build && node out/test/test_runner.js
+  - name: lint
+    contents: |
+      cd pine-script-extension && npm run lint
+  - name: package
+    contents: |
+      cd pine-script-extension && npm run bundle && npx --yes vsce package --no-dependencies
+  - name: debug-diagnostics
+    contents: |
+      cd pine-script-extension/server && node tools/debug_diagnostics.js <file.pine>
