@@ -1,7 +1,7 @@
 {
   "name": "pine-script-pro",
   "displayName": "Pine Script Pro",
-  "description": "Professional Language Support for Pine Script. Static analysis, type-infection checking, and intelligent tooltips for advanced TradingView developers.",
+  "description": "Professional Language Support for Pine Script. Static analysis, type-inference checking, and intelligent tooltips for advanced TradingView developers.",
   "version": "1.4.2",
   "license": "MIT",
   "publisher": "revanthpobala",
@@ -21,13 +21,16 @@
   },
   "keywords": [
     "pinescript",
-    "tradingview",
     "pine script",
+    "pinescript v6",
+    "pine",
+    "tradingview",
     "trading",
     "finance",
     "analyzer",
     "checker",
-    "tradingview",
+    "linter",
+    "lsp",
     "tradingview tools"
   ],
   "categories": [
