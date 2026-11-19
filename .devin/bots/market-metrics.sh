@@ -6,7 +6,7 @@
 set -euo pipefail
 
 CSV="${CSV:-$(dirname "$0")/metrics.csv}"
-COMPETITORS="${COMPETITORS:-jpantsjoha/pinescript-v6-extension}"
+COMPETITORS="${COMPETITORS:-jpantsjoha/pinescript-v6-extension hoox-sh/pyne ferranborreguero/pinecone}"
 DATE="$(date -u +%Y-%m-%d)"
 
 py() { python3 -c "$1"; }
