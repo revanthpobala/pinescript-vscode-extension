@@ -48,9 +48,13 @@ All linter logic must be verified via our custom test runner.
       "name": "Describe the test",
       "code": "pine code here",
       "expectedErrors": 1,
-      "expectedMessages": ["Expected error message fragment"]
+      "errorMessages": ["Expected error message fragment"]
     }
     ```
+    `cases.json` is an array of test-case objects. Each case requires `name` (string), `code` (Pine Script source string), and `expectedErrors` (exact count of error diagnostics).
+
+    `errorMessages` is an optional array of case-sensitive message substrings. Every entry must appear in at least one diagnostic message (error or warning); omitting it or using an empty array skips message assertions. Use `errorMessages`, not `expectedMessages`, which the runner does not read. The optional `expectedWarnings` field asserts the exact warning count.
+
 3.  **Run Tests**:
     ```bash
     cd pine-script-extension/server
